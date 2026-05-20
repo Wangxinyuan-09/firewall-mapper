@@ -88,22 +88,22 @@ function PolicyLine({ p, hit }: { p: PolicyRule; hit: string }) {
   const hasMeta = showZone || showSchedule || p.id;
   return (
     <div className="space-y-0.5">
-      <div className="flex items-baseline gap-x-3 gap-y-1 flex-wrap font-mono text-sm">
-        <span className="flex items-baseline gap-1">
-          <L>源</L>
-          <H hit={hit} value={p.srcAddr} />
-        </span>
-        <span className="flex items-baseline gap-1">
-          <L>目的</L>
-          <H hit={hit} value={p.dstAddr} />
-        </span>
-        <span className="flex items-baseline gap-1">
-          <L>服务</L>
-          <H hit={hit} value={p.service} />
-        </span>
-        <span className="ml-auto">
-          <Badge tone={actionTone}>{action}</Badge>
-        </span>
+      <div className="flex items-baseline gap-2">
+        <div className="flex items-baseline gap-x-2 font-mono text-xs min-w-0 flex-1 truncate">
+          <span className="flex items-baseline gap-1 min-w-0">
+            <L>源</L>
+            <H hit={hit} value={p.srcAddr} />
+          </span>
+          <span className="flex items-baseline gap-1 min-w-0">
+            <L>目的</L>
+            <H hit={hit} value={p.dstAddr} />
+          </span>
+          <span className="flex items-baseline gap-1 min-w-0">
+            <L>服务</L>
+            <H hit={hit} value={p.service} />
+          </span>
+        </div>
+        <Badge tone={actionTone} className="shrink-0">{action}</Badge>
       </div>
       {hasMeta && (
         <div className="flex items-baseline gap-x-3 gap-y-0.5 flex-wrap text-[11px] text-muted-foreground pl-0.5">
