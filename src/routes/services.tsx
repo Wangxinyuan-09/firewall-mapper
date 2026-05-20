@@ -84,9 +84,9 @@ function ServicesPage() {
       key: "members",
       header: "成员",
       cell: (g) => (
-        <div className="space-y-0.5 font-mono text-xs">
+        <div className="space-y-0.5">
           {g.members.map((m, i) => (
-            <div key={i}>{m}</div>
+            <div key={i}><ObjectName name={m} /></div>
           ))}
         </div>
       ),
