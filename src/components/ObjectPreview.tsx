@@ -151,10 +151,10 @@ function MemberRow({ m }: { m: string }) {
   const s = cfg.services.find((x) => x.name === m);
   const sg = cfg.serviceGroups.find((x) => x.name === m);
 
-  let kindTag = "未定义";
+  let kindTag = "未定义引用";
   let summary = "";
   if (a) {
-    kindTag = "地址";
+    kindTag = "地址对象";
     summary =
       a.entries.map((e) => `${e.kind}:${e.value}`).slice(0, 3).join("，") +
       (a.entries.length > 3 ? " …" : "");
@@ -162,7 +162,7 @@ function MemberRow({ m }: { m: string }) {
     kindTag = "地址组";
     summary = `${ag.members.length} 成员`;
   } else if (s) {
-    kindTag = "服务";
+    kindTag = "服务对象";
     summary =
       s.entries
         .map(
