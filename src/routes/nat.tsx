@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useConfigStore } from "@/lib/store";
 import { EmptyConfig } from "@/components/EmptyConfig";
 import { Badge, DataTable, LineLink, type Column } from "@/components/DataTable";
+import { ObjectName } from "@/components/ObjectPreview";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/nat")({
@@ -49,17 +50,16 @@ function NatPage() {
     {
       key: "src",
       header: "源",
-      cell: (r) => <span className="font-mono text-xs">{r.srcAddr}</span>,
+      cell: (r) => <ObjectName name={r.srcAddr} />,
       search: (r) => r.srcAddr,
     },
     {
       key: "orig",
       header: "原目的 → 端口/服务",
       cell: (r) => (
-        <div className="font-mono text-xs">
-          {r.origDstAddr}
-          <span className="text-muted-foreground"> · </span>
-          {r.origDstService}
+        <div className="space-y-0.5">
+          <ObjectName name={r.origDstAddr} />
+          <div><ObjectName name={r.origDstService} /></div>
         </div>
       ),
       search: (r) => `${r.origDstAddr} ${r.origDstService}`,
@@ -68,13 +68,12 @@ function NatPage() {
       key: "trans",
       header: "转换为",
       cell: (r) => (
-        <div className="font-mono text-xs">
-          {r.translatedPool}
+        <div className="space-y-0.5">
+          <ObjectName name={r.translatedPool} />
           {r.servicePort && (
-            <>
-              <span className="text-muted-foreground"> · service </span>
-              {r.servicePort}
-            </>
+            <div className="font-mono text-xs text-muted-foreground">
+              service {r.servicePort}
+            </div>
           )}
         </div>
       ),

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useConfigStore } from "@/lib/store";
 import { EmptyConfig } from "@/components/EmptyConfig";
 import { Badge, DataTable, LineLink, type Column } from "@/components/DataTable";
+import { ObjectName } from "@/components/ObjectPreview";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/services")({
@@ -83,9 +84,9 @@ function ServicesPage() {
       key: "members",
       header: "成员",
       cell: (g) => (
-        <div className="space-y-0.5 font-mono text-xs">
+        <div className="space-y-0.5">
           {g.members.map((m, i) => (
-            <div key={i}>{m}</div>
+            <div key={i}><ObjectName name={m} /></div>
           ))}
         </div>
       ),

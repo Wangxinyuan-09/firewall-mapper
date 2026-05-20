@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useConfigStore } from "@/lib/store";
 import { EmptyConfig } from "@/components/EmptyConfig";
 import { Badge, DataTable, LineLink, type Column } from "@/components/DataTable";
+import { ObjectName } from "@/components/ObjectPreview";
 
 export const Route = createFileRoute("/policies")({
   head: () => ({
@@ -42,19 +43,19 @@ function PoliciesPage() {
     {
       key: "src",
       header: "源",
-      cell: (p) => <span className="font-mono text-xs">{p.srcAddr}</span>,
+      cell: (p) => <ObjectName name={p.srcAddr} />,
       search: (p) => p.srcAddr,
     },
     {
       key: "dst",
       header: "目的",
-      cell: (p) => <span className="font-mono text-xs">{p.dstAddr}</span>,
+      cell: (p) => <ObjectName name={p.dstAddr} />,
       search: (p) => p.dstAddr,
     },
     {
       key: "svc",
       header: "服务",
-      cell: (p) => <span className="font-mono text-xs">{p.service}</span>,
+      cell: (p) => <ObjectName name={p.service} />,
       search: (p) => p.service,
     },
     {
