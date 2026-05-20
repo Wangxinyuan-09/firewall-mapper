@@ -195,9 +195,8 @@ function GroupLine({
         </span>
       </div>
       {description && (
-        <div className="flex items-baseline gap-1 text-[11px] text-muted-foreground pl-0.5">
-          <L>说明</L>
-          <span className="line-clamp-2 break-all">{description}</span>
+        <div className="text-[11px] text-muted-foreground pl-0.5 line-clamp-2 break-all">
+          {description}
         </div>
       )}
     </div>
