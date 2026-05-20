@@ -256,21 +256,13 @@ export function ObjectName({
       <HoverCardTrigger asChild>{trigger}</HoverCardTrigger>
       <HoverCardContent className="w-96 max-h-96 overflow-auto" align="start">
         <div className="space-y-2">
-          <div>
-            <div className="text-sm font-semibold">{r.name}</div>
-            <div className="text-xs text-muted-foreground">
-              <Badge
-                tone={
-                  r.kind === "unknown"
-                    ? "danger"
-                    : isLiteral
-                      ? "muted"
-                      : "default"
-                }
-              >
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold break-all">{r.name}</span>
+            {!isLiteral && (
+              <Badge tone={r.kind === "unknown" ? "danger" : "default"}>
                 {kindLabel[r.kind]}
               </Badge>
-            </div>
+            )}
           </div>
           {r.literal && (
             <div className="text-xs text-muted-foreground">{r.literal}</div>
