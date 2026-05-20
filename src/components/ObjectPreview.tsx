@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/hover-card";
 import { Badge } from "@/components/DataTable";
 import { useConfigStore } from "@/lib/store";
+import { useShowFullPortRange } from "@/lib/uiPrefs";
 import { L, DescQuote } from "@/components/previewAtoms";
 import type {
   AddressGroup,
@@ -128,30 +129,40 @@ function AddressEntries({ a }: { a: AddressObject }) {
   );
 }
 
+function isFullPort(p?: string) {
+  return p === "1-65535";
+}
+
 function ServiceEntries({ s }: { s: ServiceObject }) {
+  const [showFull] = useShowFullPortRange();
+  const fmt = (p?: string) =>
+    p ? (!showFull && isFullPort(p) ? "any" : p) : "any";
   return (
     <div className="space-y-0.5 font-mono text-xs">
       {s.entries.length === 0 ? (
         <span className="text-muted-foreground">（空）</span>
       ) : (
-        s.entries.map((e, i) => (
-          <div key={i} className="flex items-baseline gap-x-2 flex-wrap">
-            <span className="flex items-baseline gap-1">
-              <L>协议</L>
-              <span className="text-foreground">{e.protocol}</span>
-            </span>
-            <span className="flex items-baseline gap-1">
-              <L>目的</L>
-              <span className="text-foreground">{e.destPort ?? "any"}</span>
-            </span>
-            {e.sourcePort && (
+        s.entries.map((e, i) => {
+          const srcHidden = !showFull && isFullPort(e.sourcePort);
+          return (
+            <div key={i} className="flex items-baseline gap-x-2 flex-wrap">
               <span className="flex items-baseline gap-1">
-                <L>源</L>
-                <span className="text-foreground">{e.sourcePort}</span>
+                <L>协议</L>
+                <span className="text-foreground">{e.protocol}</span>
               </span>
-            )}
-          </div>
-        ))
+              <span className="flex items-baseline gap-1">
+                <L>目的</L>
+                <span className="text-foreground">{fmt(e.destPort)}</span>
+              </span>
+              {e.sourcePort && !srcHidden && (
+                <span className="flex items-baseline gap-1">
+                  <L>源</L>
+                  <span className="text-foreground">{e.sourcePort}</span>
+                </span>
+              )}
+            </div>
+          );
+        })
       )}
     </div>
   );
