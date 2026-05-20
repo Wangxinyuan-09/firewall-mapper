@@ -6,6 +6,62 @@ import {
 } from "@/components/ui/hover-card";
 import { Badge } from "@/components/DataTable";
 import { useConfigStore } from "@/lib/store";
+import type { RefUsage } from "@/lib/parser";
+
+const byLabel: Record<RefUsage["by"], string> = {
+  policy: "策略",
+  nat: "NAT",
+  "address-group": "地址组",
+  "service-group": "服务组",
+};
+
+function useEnrich() {
+  const { cfg } = useConfigStore();
+  return (r: RefUsage) => {
+    if (!cfg) return { title: r.detail, sub: "" };
+    if (r.by === "policy") {
+      const p = cfg.policies.find((x) => x.id === r.id);
+      if (p)
+        return {
+          title: `策略 #${p.id}`,
+          action: p.action,
+          sub: `${p.srcZone}→${p.dstZone} · ${p.srcAddr} → ${p.dstAddr} : ${p.service}`,
+        };
+    }
+    if (r.by === "nat") {
+      const n = cfg.natRules.find((x) => x.id === r.id);
+      if (n)
+        return {
+          title: `NAT #${n.id}`,
+          action: n.kind,
+          sub:
+            n.kind === "destination"
+              ? `${n.srcAddr} → ${n.origDstAddr}:${n.origDstService} ⇒ ${n.translatedPool}`
+              : `${n.srcAddr} → ${n.origDstAddr} ⇒ ${n.translatedPool}`,
+          desc: n.description,
+        };
+    }
+    if (r.by === "address-group") {
+      const g = cfg.addressGroups.find((x) => x.name === r.id);
+      if (g)
+        return {
+          title: `地址组 ${g.name}`,
+          sub: `${g.members.length} 个成员`,
+          desc: g.description,
+        };
+    }
+    if (r.by === "service-group") {
+      const g = cfg.serviceGroups.find((x) => x.name === r.id);
+      if (g)
+        return {
+          title: `服务组 ${g.name}`,
+          sub: `${g.members.length} 个成员`,
+          desc: g.description,
+        };
+    }
+    return { title: r.detail, sub: "" };
+  };
+}
 
 export function RefsPreview({
   name,
@@ -15,6 +71,7 @@ export function RefsPreview({
   kind: "address" | "service";
 }) {
   const { xr } = useConfigStore();
+  const enrich = useEnrich();
   if (!xr) return null;
   const refs =
     kind === "service"
@@ -23,37 +80,70 @@ export function RefsPreview({
 
   if (refs.length === 0) return <Badge tone="warn">未引用</Badge>;
 
-  const byKind = [...new Set(refs.map((r) => r.by))].join(", ");
+  const counts = refs.reduce<Record<string, number>>((acc, r) => {
+    acc[r.by] = (acc[r.by] ?? 0) + 1;
+    return acc;
+  }, {});
+  const summary = Object.entries(counts)
+    .map(([k, v]) => `${byLabel[k as RefUsage["by"]]} ${v}`)
+    .join(" · ");
   const shown = refs.slice(0, 50);
 
   return (
     <HoverCard openDelay={120} closeDelay={80}>
       <HoverCardTrigger asChild>
         <span className="text-xs cursor-help underline decoration-dotted underline-offset-2 text-primary">
-          {refs.length} 处（{byKind}）
+          {refs.length} 处（{summary}）
         </span>
       </HoverCardTrigger>
-      <HoverCardContent className="w-[28rem] max-h-96 overflow-auto" align="start">
+      <HoverCardContent className="w-[32rem] max-h-[28rem] overflow-auto" align="start">
         <div className="space-y-2">
           <div className="text-sm font-semibold">
             {name} · 被引用 {refs.length} 处
           </div>
-          <ul className="space-y-1">
-            {shown.map((r, i) => (
-              <li key={i} className="text-xs flex gap-2">
-                <Link
-                  to="/raw"
-                  search={{ line: r.lineNo }}
-                  className="text-primary hover:underline font-mono shrink-0"
-                >
-                  L{r.lineNo}
-                </Link>
-                <Badge tone="muted">{r.by}</Badge>
-                <span className="text-muted-foreground break-all">
-                  {r.detail}
-                </span>
-              </li>
-            ))}
+          <div className="text-xs text-muted-foreground">{summary}</div>
+          <ul className="space-y-1.5">
+            {shown.map((r, i) => {
+              const e = enrich(r);
+              return (
+                <li key={i} className="text-xs border-l-2 border-border pl-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Link
+                      to="/raw"
+                      search={{ line: r.lineNo }}
+                      className="text-primary hover:underline font-mono shrink-0"
+                    >
+                      L{r.lineNo}
+                    </Link>
+                    <Badge tone="muted">{byLabel[r.by]}</Badge>
+                    <span className="font-medium">{e.title}</span>
+                    {e.action && (
+                      <Badge
+                        tone={
+                          e.action === "permit"
+                            ? "ok"
+                            : e.action === "deny"
+                              ? "danger"
+                              : "default"
+                        }
+                      >
+                        {e.action}
+                      </Badge>
+                    )}
+                  </div>
+                  {e.sub && (
+                    <div className="mt-0.5 font-mono text-muted-foreground break-all">
+                      {e.sub}
+                    </div>
+                  )}
+                  {e.desc && (
+                    <div className="mt-0.5 text-muted-foreground italic break-all">
+                      {e.desc}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
             {refs.length > shown.length && (
               <li className="text-xs text-muted-foreground">
                 …还有 {refs.length - shown.length} 处
