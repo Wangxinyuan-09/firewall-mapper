@@ -117,8 +117,8 @@ function PolicyLine({ p, hit }: { p: PolicyRule; hit: string }) {
           )}
           {showSchedule && (
             <span className="flex items-baseline gap-1">
-              <L>调度</L>
-              <span className="font-mono text-amber-600">仅 {p.schedule}</span>
+              <L>期限</L>
+              <span className="font-mono text-violet-600 dark:text-violet-400">仅 {p.schedule}</span>
             </span>
           )}
           {p.id && <span className="ml-auto font-mono">#{p.id}</span>}
