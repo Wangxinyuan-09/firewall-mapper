@@ -9,27 +9,55 @@ import { useConfigStore } from "@/lib/store";
 import type {
   AddressGroup,
   AddressObject,
+  NatPool,
   ServiceGroup,
   ServiceObject,
 } from "@/lib/parser/types";
 
-type Kind = "address" | "address-group" | "service" | "service-group" | "unknown";
+type Kind =
+  | "address"
+  | "address-group"
+  | "service"
+  | "service-group"
+  | "nat-pool"
+  | "literal-ip"
+  | "literal-port"
+  | "literal-any"
+  | "unknown";
 
 interface Resolved {
   kind: Kind;
   name: string;
   lineNo?: number;
   description?: string;
+  literal?: string; // 解析为字面量时的说明
   addr?: AddressObject;
   addrGroup?: AddressGroup;
   svc?: ServiceObject;
   svcGroup?: ServiceGroup;
+  pool?: NatPool;
+}
+
+const IP_RE = /^\d{1,3}(\.\d{1,3}){3}(\/\d{1,2})?$/;
+const RANGE_RE = /^\d{1,3}(\.\d{1,3}){3}-\d{1,3}(\.\d{1,3}){3}$/;
+const PORT_RE = /^\d{1,5}(-\d{1,5})?$/;
+const ANY_RE = /^any(-(src|dst|ip|service))?$/i;
+
+function classifyLiteral(name: string): Resolved | null {
+  if (ANY_RE.test(name))
+    return { kind: "literal-any", name, literal: "通配（不限制）" };
+  if (IP_RE.test(name))
+    return { kind: "literal-ip", name, literal: "字面 IP / 网段" };
+  if (RANGE_RE.test(name))
+    return { kind: "literal-ip", name, literal: "字面 IP 区间" };
+  if (PORT_RE.test(name))
+    return { kind: "literal-port", name, literal: "字面端口" };
+  return null;
 }
 
 function useResolve(name: string): Resolved {
   const { cfg } = useConfigStore();
-  if (!cfg || !name || name === "any")
-    return { kind: "unknown", name };
+  if (!cfg || !name) return { kind: "unknown", name };
   const a = cfg.addresses.find((x) => x.name === name);
   if (a)
     return { kind: "address", name, lineNo: a.lineNo, description: a.description, addr: a };
@@ -54,6 +82,17 @@ function useResolve(name: string): Resolved {
       description: sg.description,
       svcGroup: sg,
     };
+  const p = cfg.natPools.find((x) => x.name === name);
+  if (p)
+    return {
+      kind: "nat-pool",
+      name,
+      lineNo: p.lineNo,
+      description: p.description,
+      pool: p,
+    };
+  const lit = classifyLiteral(name);
+  if (lit) return lit;
   return { kind: "unknown", name };
 }
 
@@ -62,8 +101,14 @@ const kindLabel: Record<Kind, string> = {
   "address-group": "地址组",
   service: "服务",
   "service-group": "服务组",
+  "nat-pool": "NAT 池",
+  "literal-ip": "字面 IP",
+  "literal-port": "字面端口",
+  "literal-any": "通配",
   unknown: "未定义",
 };
+
+
 
 function AddressEntries({ a }: { a: AddressObject }) {
   return (
