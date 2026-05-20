@@ -401,25 +401,56 @@ function EndpointPicker({
   options: string[];
   placeholder: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const displayValue = value === "any" ? "any" : value;
+  const isCustom = !options.includes(value);
+
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs text-muted-foreground">{label}</label>
       <div className="flex gap-1.5">
-        <Select value={options.includes(value) ? value : "__custom__"} onValueChange={(v) => v !== "__custom__" && onChange(v)}>
-          <SelectTrigger className="w-52">
-            <SelectValue placeholder="对象/组" />
-          </SelectTrigger>
-          <SelectContent className="max-h-80">
-            {options.map((n) => (
-              <SelectItem key={n} value={n}>
-                {n}
-              </SelectItem>
-            ))}
-            {!options.includes(value) && value !== "any" && (
-              <SelectItem value="__custom__">{value}（自定义）</SelectItem>
-            )}
-          </SelectContent>
-        </Select>
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              className="w-52 justify-between font-mono text-xs"
+            >
+              {displayValue}
+              <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-52 p-0">
+            <Command>
+              <CommandInput placeholder="搜索对象…" className="h-9 text-xs" />
+              <CommandList>
+                <CommandEmpty className="py-4 text-xs">未找到匹配项</CommandEmpty>
+                <CommandGroup>
+                  {options.map((n) => (
+                    <CommandItem
+                      key={n}
+                      value={n}
+                      onSelect={(currentValue) => {
+                        onChange(currentValue === value ? "any" : currentValue);
+                        setOpen(false);
+                      }}
+                      className="text-xs"
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-3.5 w-3.5",
+                          value === n ? "opacity-100" : "opacity-0"
+                        )}
+                      />
+                      {n}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
         <Input
           value={value === "any" ? "" : value}
           onChange={(e) => onChange(e.target.value || "any")}
@@ -440,21 +471,54 @@ function ServicePicker({
   onChange: (v: string) => void;
   options: string[];
 }) {
+  const [open, setOpen] = useState(false);
+  const displayValue = value === "any" ? "any" : value;
+
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs text-muted-foreground">服务</label>
-      <Select value={options.includes(value) ? value : "__custom__"} onValueChange={(v) => v !== "__custom__" && onChange(v)}>
-        <SelectTrigger className="w-44">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="max-h-80">
-          {options.map((n) => (
-            <SelectItem key={n} value={n}>
-              {n}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="w-44 justify-between font-mono text-xs"
+          >
+            {displayValue}
+            <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-44 p-0">
+          <Command>
+            <CommandInput placeholder="搜索服务…" className="h-9 text-xs" />
+            <CommandList>
+              <CommandEmpty className="py-4 text-xs">未找到匹配项</CommandEmpty>
+              <CommandGroup>
+                {options.map((n) => (
+                  <CommandItem
+                    key={n}
+                    value={n}
+                    onSelect={(currentValue) => {
+                      onChange(currentValue === value ? "any" : currentValue);
+                      setOpen(false);
+                    }}
+                    className="text-xs"
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-3.5 w-3.5",
+                        value === n ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {n}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
