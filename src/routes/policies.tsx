@@ -79,6 +79,7 @@ function PoliciesPage() {
       header: "行号",
       cell: (p) => <LineLink line={p.lineNo} />,
       className: "w-20",
+      hiddenWhenNoLineNo: true,
     },
   ];
 

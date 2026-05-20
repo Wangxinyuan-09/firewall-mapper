@@ -67,6 +67,7 @@ function AuditPage() {
       header: "行号",
       cell: (f) => <LineLink line={f.refLine} />,
       className: "w-20",
+      hiddenWhenNoLineNo: true,
     },
   ];
 

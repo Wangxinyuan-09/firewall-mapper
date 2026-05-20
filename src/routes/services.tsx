@@ -67,6 +67,7 @@ function ServicesPage() {
       header: "行号",
       cell: (s) => <LineLink line={s.lineNo} />,
       className: "w-20",
+      hiddenWhenNoLineNo: true,
     },
   ];
 
@@ -110,6 +111,7 @@ function ServicesPage() {
       header: "行号",
       cell: (g) => <LineLink line={g.lineNo} />,
       className: "w-20",
+      hiddenWhenNoLineNo: true,
     },
   ];
 

@@ -66,6 +66,7 @@ function ObjectsPage() {
       header: "行号",
       cell: (a) => <LineLink line={a.lineNo} />,
       className: "w-20",
+      hiddenWhenNoLineNo: true,
     },
   ];
 
@@ -110,6 +111,7 @@ function ObjectsPage() {
       header: "行号",
       cell: (g) => <LineLink line={g.lineNo} />,
       className: "w-20",
+      hiddenWhenNoLineNo: true,
     },
   ];
 
