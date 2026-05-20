@@ -5,6 +5,7 @@ import { Badge, DataTable, LineLink, type Column } from "@/components/DataTable"
 import { ObjectName } from "@/components/ObjectPreview";
 import { RefsPreview } from "@/components/RefsPreview";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { useShowFullPortRange } from "@/lib/uiPrefs";
 
 export const Route = createFileRoute("/services")({
   head: () => ({
@@ -21,7 +22,13 @@ export const Route = createFileRoute("/services")({
 
 function ServicesPage() {
   const { cfg, xr } = useConfigStore();
+  const [showFull] = useShowFullPortRange();
   if (!cfg || !xr) return <EmptyConfig />;
+
+  const fmtPort = (p?: string) =>
+    p ? (!showFull && p === "1-65535" ? "any" : p) : "any";
+  const showSrc = (p?: string) =>
+    !!p && !(!showFull && p === "1-65535");
 
   const svcCols: Column<(typeof cfg.services)[number]>[] = [
     {
@@ -37,8 +44,8 @@ function ServicesPage() {
         <div className="space-y-0.5 font-mono text-xs">
           {s.entries.map((e, i) => (
             <div key={i}>
-              <Badge tone="muted">{e.protocol}</Badge> dst {e.destPort ?? "any"}
-              {e.sourcePort ? ` · src ${e.sourcePort}` : ""}
+              <Badge tone="muted">{e.protocol}</Badge> dst {fmtPort(e.destPort)}
+              {showSrc(e.sourcePort) ? ` · src ${e.sourcePort}` : ""}
             </div>
           ))}
         </div>

@@ -1,53 +1,75 @@
 import { useSyncExternalStore } from "react";
 
-const KEY = "cfg.showLineNo";
+type PrefKey = "cfg.showLineNo" | "cfg.showFullPortRange";
 
-function read(): boolean {
-  if (typeof window === "undefined") return false;
+const defaults: Record<PrefKey, boolean> = {
+  "cfg.showLineNo": false,
+  "cfg.showFullPortRange": false,
+};
+
+function read(key: PrefKey): boolean {
+  if (typeof window === "undefined") return defaults[key];
   try {
-    return window.localStorage.getItem(KEY) === "1";
+    const v = window.localStorage.getItem(key);
+    if (v === null) return defaults[key];
+    return v === "1";
   } catch {
-    return false;
+    return defaults[key];
   }
 }
 
-const listeners = new Set<() => void>();
+const listeners = new Map<PrefKey, Set<() => void>>();
 
-function subscribe(cb: () => void) {
-  listeners.add(cb);
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === KEY) cb();
-  };
-  if (typeof window !== "undefined") {
-    window.addEventListener("storage", onStorage);
+function getListeners(key: PrefKey) {
+  let s = listeners.get(key);
+  if (!s) {
+    s = new Set();
+    listeners.set(key, s);
   }
-  return () => {
-    listeners.delete(cb);
+  return s;
+}
+
+function makeSubscribe(key: PrefKey) {
+  return (cb: () => void) => {
+    const s = getListeners(key);
+    s.add(cb);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === key) cb();
+    };
     if (typeof window !== "undefined") {
-      window.removeEventListener("storage", onStorage);
+      window.addEventListener("storage", onStorage);
     }
+    return () => {
+      s.delete(cb);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("storage", onStorage);
+      }
+    };
   };
 }
 
-function getSnapshot(): boolean {
-  return read();
-}
-
-function getServerSnapshot(): boolean {
-  return false;
-}
-
-export function setShowLineNumbers(v: boolean) {
+function setPref(key: PrefKey, v: boolean) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(KEY, v ? "1" : "0");
+    window.localStorage.setItem(key, v ? "1" : "0");
   } catch {
     // ignore
   }
-  listeners.forEach((cb) => cb());
+  getListeners(key).forEach((cb) => cb());
 }
 
-export function useShowLineNumbers(): [boolean, (v: boolean) => void] {
-  const v = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  return [v, setShowLineNumbers];
+function useBoolPref(key: PrefKey): [boolean, (v: boolean) => void] {
+  const v = useSyncExternalStore(
+    makeSubscribe(key),
+    () => read(key),
+    () => defaults[key],
+  );
+  return [v, (nv: boolean) => setPref(key, nv)];
 }
+
+export const setShowLineNumbers = (v: boolean) => setPref("cfg.showLineNo", v);
+export const useShowLineNumbers = () => useBoolPref("cfg.showLineNo");
+
+export const setShowFullPortRange = (v: boolean) =>
+  setPref("cfg.showFullPortRange", v);
+export const useShowFullPortRange = () => useBoolPref("cfg.showFullPortRange");

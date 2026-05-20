@@ -3,7 +3,7 @@ import { useConfigStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { useShowLineNumbers } from "@/lib/uiPrefs";
+import { useShowLineNumbers, useShowFullPortRange } from "@/lib/uiPrefs";
 
 const nav = [
   { to: "/", label: "概览" },
@@ -21,6 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { cfg, fileName, clear } = useConfigStore();
   const loc = useLocation();
   const [showLineNo, setShowLineNo] = useShowLineNumbers();
+  const [showFullPort, setShowFullPort] = useShowFullPortRange();
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -55,6 +56,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <span>行号</span>
               <Switch checked={showLineNo} onCheckedChange={setShowLineNo} />
+            </label>
+            <label
+              className="flex items-center gap-1.5 cursor-pointer select-none"
+              title="默认隐藏 1-65535 全端口范围（视为 any）"
+            >
+              <span>全端口</span>
+              <Switch checked={showFullPort} onCheckedChange={setShowFullPort} />
             </label>
             {cfg ? (
               <>
