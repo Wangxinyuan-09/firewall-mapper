@@ -98,53 +98,71 @@ function ServiceEntries({ s }: { s: ServiceObject }) {
   );
 }
 
-function GroupMembers({
-  members,
-  depth = 0,
-}: {
-  members: string[];
-  depth?: number;
-}) {
-  const { cfg } = useConfigStore();
+function MemberRow({ m }: { m: string }) {
+  const { cfg, xr } = useConfigStore();
   if (!cfg) return null;
-  if (depth > 2)
-    return <div className="text-xs text-muted-foreground">…（已达展开深度）</div>;
+  const a = cfg.addresses.find((x) => x.name === m);
+  const ag = cfg.addressGroups.find((x) => x.name === m);
+  const s = cfg.services.find((x) => x.name === m);
+  const sg = cfg.serviceGroups.find((x) => x.name === m);
+
+  let kindTag = "未定义";
+  let summary = "";
+  if (a) {
+    kindTag = "地址";
+    summary =
+      a.entries.map((e) => `${e.kind}:${e.value}`).slice(0, 3).join("，") +
+      (a.entries.length > 3 ? " …" : "");
+  } else if (ag) {
+    kindTag = "地址组";
+    summary = `${ag.members.length} 成员`;
+  } else if (s) {
+    kindTag = "服务";
+    summary =
+      s.entries
+        .map(
+          (e) =>
+            `${e.protocol}/${e.destPort ?? "any"}${e.sourcePort ? `←${e.sourcePort}` : ""}`,
+        )
+        .slice(0, 3)
+        .join("，") + (s.entries.length > 3 ? " …" : "");
+  } else if (sg) {
+    kindTag = "服务组";
+    summary = `${sg.members.length} 成员`;
+  }
+
+  const desc = a?.description ?? ag?.description ?? s?.description ?? sg?.description;
+  const refCount =
+    (s || sg
+      ? xr?.serviceUsedBy.get(m)?.length
+      : xr?.addressUsedBy.get(m)?.length) ?? 0;
+  const unresolved = !a && !ag && !s && !sg;
+
+  return (
+    <li className="text-xs flex items-start gap-2 flex-wrap">
+      <Badge tone={unresolved ? "danger" : "muted"}>{kindTag}</Badge>
+      <ObjectName name={m} />
+      {summary && (
+        <span className="font-mono text-muted-foreground break-all">{summary}</span>
+      )}
+      {refCount > 0 ? (
+        <Badge tone="default">引用 {refCount}</Badge>
+      ) : !unresolved ? (
+        <Badge tone="warn">未引用</Badge>
+      ) : null}
+      {desc && <span className="text-muted-foreground italic">{desc}</span>}
+    </li>
+  );
+}
+
+function GroupMembers({ members }: { members: string[] }) {
+  if (members.length === 0)
+    return <div className="text-xs text-muted-foreground">（空）</div>;
   return (
     <ul className="space-y-1">
-      {members.map((m, i) => {
-        const a = cfg.addresses.find((x) => x.name === m);
-        const ag = cfg.addressGroups.find((x) => x.name === m);
-        const s = cfg.services.find((x) => x.name === m);
-        const sg = cfg.serviceGroups.find((x) => x.name === m);
-        return (
-          <li key={i} className="text-xs">
-            <span className="font-medium">{m}</span>
-            {a && (
-              <div className="mt-0.5 ml-3">
-                <AddressEntries a={a} />
-              </div>
-            )}
-            {s && (
-              <div className="mt-0.5 ml-3">
-                <ServiceEntries s={s} />
-              </div>
-            )}
-            {ag && (
-              <div className="mt-0.5 ml-3">
-                <GroupMembers members={ag.members} depth={depth + 1} />
-              </div>
-            )}
-            {sg && (
-              <div className="mt-0.5 ml-3">
-                <GroupMembers members={sg.members} depth={depth + 1} />
-              </div>
-            )}
-            {!a && !ag && !s && !sg && (
-              <span className="ml-2 text-muted-foreground">未定义</span>
-            )}
-          </li>
-        );
-      })}
+      {members.map((m, i) => (
+        <MemberRow key={i} m={m} />
+      ))}
     </ul>
   );
 }
