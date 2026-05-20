@@ -296,20 +296,22 @@ export function ObjectName({
       <HoverCardTrigger asChild>{trigger}</HoverCardTrigger>
       <HoverCardContent className="w-96 max-h-96 overflow-auto" align="start">
         <div className="space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold break-all">{r.name}</span>
+          <div className="flex items-baseline gap-2">
+            <span className="text-sm font-semibold break-all min-w-0 flex-1">
+              {r.name}
+            </span>
             {!isLiteral && (
-              <Badge tone={r.kind === "unknown" ? "danger" : "default"}>
-                {kindLabel[r.kind]}
-              </Badge>
+              <span className="shrink-0">
+                <Badge tone={r.kind === "unknown" ? "danger" : "default"}>
+                  {kindLabel[r.kind]}
+                </Badge>
+              </span>
             )}
           </div>
           {r.literal && (
             <div className="text-xs text-muted-foreground">{r.literal}</div>
           )}
-          {r.description && (
-            <div className="text-xs text-muted-foreground">{r.description}</div>
-          )}
+          {r.description && <DescQuote>{r.description}</DescQuote>}
           {r.addr && <AddressEntries a={r.addr} />}
           {r.svc && <ServiceEntries s={r.svc} />}
           {r.pool && <PoolDetail p={r.pool} />}
