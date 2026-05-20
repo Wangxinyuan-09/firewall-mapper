@@ -118,8 +118,9 @@ function AddressEntries({ a }: { a: AddressObject }) {
         <span className="text-muted-foreground">（空）</span>
       ) : (
         a.entries.map((e, i) => (
-          <div key={i}>
-            <Badge tone="muted">{e.kind}</Badge> {e.value}
+          <div key={i} className="flex items-baseline gap-1">
+            <L>{e.kind}</L>
+            <span className="text-foreground break-all">{e.value}</span>
           </div>
         ))
       )}
@@ -134,9 +135,21 @@ function ServiceEntries({ s }: { s: ServiceObject }) {
         <span className="text-muted-foreground">（空）</span>
       ) : (
         s.entries.map((e, i) => (
-          <div key={i}>
-            <Badge tone="muted">{e.protocol}</Badge> dst {e.destPort ?? "any"}
-            {e.sourcePort ? ` · src ${e.sourcePort}` : ""}
+          <div key={i} className="flex items-baseline gap-x-2 flex-wrap">
+            <span className="flex items-baseline gap-1">
+              <L>协议</L>
+              <span className="text-foreground">{e.protocol}</span>
+            </span>
+            <span className="flex items-baseline gap-1">
+              <L>目的</L>
+              <span className="text-foreground">{e.destPort ?? "any"}</span>
+            </span>
+            {e.sourcePort && (
+              <span className="flex items-baseline gap-1">
+                <L>源</L>
+                <span className="text-foreground">{e.sourcePort}</span>
+              </span>
+            )}
           </div>
         ))
       )}
