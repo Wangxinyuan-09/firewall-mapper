@@ -112,7 +112,6 @@ export function RefsPreview({
                       L{r.lineNo}
                     </Link>
                     <Badge tone="muted">{byLabel[r.by]}</Badge>
-                    <span className="font-medium">{e.title}</span>
                     {e.action && (
                       <Badge
                         tone={
@@ -126,12 +125,12 @@ export function RefsPreview({
                         {e.action}
                       </Badge>
                     )}
+                    {e.sub && (
+                      <span className="font-mono text-foreground break-all">
+                        {e.sub}
+                      </span>
+                    )}
                   </div>
-                  {e.sub && (
-                    <div className="mt-0.5 font-mono text-muted-foreground break-all">
-                      {e.sub}
-                    </div>
-                  )}
                   {e.desc && (
                     <div className="mt-0.5 text-muted-foreground italic break-all">
                       {e.desc}
