@@ -1,65 +1,82 @@
-## 对象预览（ObjectPreview）优化
+## 现状盘点
 
-参考 RefsPreview 已落地的样式语言（小号 uppercase 标签 L()、引用样式描述、tone 化 Badge、紧凑两排布局），把对象 Hover 卡片做一致化优化。
+**中间节点 `/intermediaries`**
+- 只是把命名命中 WAF/网关/代理/堡垒/LB 的对象/池平铺成一张表。
+- 没告诉用户：这个 WAF 到底"挡在谁前面、转给谁、用什么端口"——和直接看对象列表差别不大。
 
-### 现状问题
+**访问关系 `/access-graph`**
+- 只能按"源/目的"二选一对象名做相等匹配；`any` → `any` 直接列出全表，没意义。
+- 不支持服务/端口过滤；不支持输入字面 IP。
+- 链路图只是把识别到的中间节点拼一行，不反映 DNAT 真实"外部目的 → translatedPool → 后端"的转换。
+- 没有"结论"（这条访问是允许还是拒绝、被哪条命中），运维拿不到结论。
 
-1. **卡片头部**：仅 `名称 + Badge(kindLabel)`，描述用单独一行普通灰字，缺少和 RefsPreview 一致的"引用样式"（左边框 + italic）。
-2. **AddressEntries / ServiceEntries**：每行以 `Badge(kind/protocol)` 起头，颜色一律 muted，视觉密度高、缺少字段标签，端口/源端口靠空格拼接，可读性一般。
-3. **MemberRow**：
-   - `Badge(kindTag)` + 名称 + 长 summary + 描述全部挤在一行 `flex-wrap`，描述断行后与上一行成员混在一起难分辨。
-   - summary 是纯文本（"host:1.1.1.1，range:..."），没有字段标签，未利用 L() 风格。
-   - 描述同样缺引用样式。
-4. **GroupMembers 标题**：`成员（N）` 与 RefsPreview 段标题风格不一致（后者是 `byLabel（N）` + 可选操作按钮）。
-5. **PoolDetail**：单行 mono，缺少 `起始/结束` 字段标签。
-6. **literal / unknown 提示**：literal 提示和 description 都用同款 `text-xs text-muted-foreground`，无法区分"系统注释"和"用户描述"。
-7. **共享工具**：`L()` 目前定义在 RefsPreview 内部，对象预览复用时需要抽出（或在 ObjectPreview 内复制一份）。
+## 真实使用场景
 
-### 优化方案
+1. **审计**："外网哪些端口能进？落到了哪台后端？走了哪个 WAF/网关？"
+2. **运维排错**："某客户访问业务 X 不通——X 的入口 DNAT 是哪条？出口策略允许了吗？"
+3. **变更评估**："要下线这台堡垒机/网关，有哪些策略和 NAT 还在用它？"
+4. **资产梳理**："列出所有暴露在外的服务（DNAT 入口 + 命中 permit 的策略）"。
 
-**A. 提取共享原子（轻量）**
-- 在 `src/components/RefsPreview.tsx` 把 `L`（小号 uppercase label）和"引用样式描述"类名（`border-l-2 border-border pl-2 italic`）抽到新文件 `src/components/previewAtoms.tsx`，导出 `L`、`DescQuote`（包装 children 的 span/div）。
-- RefsPreview 和 ObjectPreview 都从这里 import，保持视觉一致。
+## 重新设计
 
-**B. 卡片头部 (ObjectName HoverCardContent)**
-- 标题行保持 `名称 + Badge(kindLabel)`，但把 Badge 放到 `ml-auto`，让名称靠左独占主要空间。
-- `r.description` 改用 `DescQuote`：`border-l-2 border-border pl-2 italic text-xs text-muted-foreground`，与 RefsPreview 描述一致。
-- `r.literal`（系统说明，如"通配（不限制）"）保持普通 muted 文本，**不**加引用样式 —— 区分"系统注释"和"用户描述"。
-- `unknown` 提示行使用 `text-destructive` + 小图标语义（保留现样式即可）。
+### 一、中间节点 → "中间节点拓扑"
 
-**C. AddressEntries**
-- 每条改为：`<L>kind</L> <span className="text-foreground">{value}</span>`，去掉 Badge，密度更低。
-- 容器保留 `space-y-0.5 font-mono text-xs`。
+把表格改成**按类别分区的卡片视图**，每张卡片就是一个真实可用的"节点档案"。
 
-**D. ServiceEntries**
-- 每条改为：`<L>协议</L> {protocol} <L>目的</L> {destPort ?? 'any'} [<L>源</L> {sourcePort}]`，端口区段用 `text-foreground`，标签用 L()。
-- 多个源端口/目的端口情况下间距用 `gap-x-2`。
+每个节点卡片显示：
+- 名称 + 类别徽章 + 代表 IP（来自地址对象或 NAT 池 from-to）
+- **上游入口**：以该节点为 `translatedPool` 的 DNAT 条数 + 暴露端口聚合（如 `tcp/443, tcp/80`）
+- **下游后端**：以该节点名作为策略 `srcAddr` 出现的策略数（节点向内访问谁）
+- **被引用**：作为策略 `dstAddr` 的策略数（谁可以访问该节点）
+- 行号链接到原始配置
 
-**E. MemberRow（GroupMembers 中的每个成员）**
-- 重构为两排（与 RefsPreview PolicyLine/NatLine 一致）：
-  - 第一排：`<L>类型</L> kindTag · <ObjectName name={m}/> · summary（mono，截断）` + 右侧 `Badge(类型 tone)`（unresolved → danger，否则 muted）。
-  - 第二排（仅当有描述）：`DescQuote` 包装 description，与 RefsPreview NAT 描述一致。
-- summary 在第一排用 `truncate min-w-0`，避免挤压第二排。
-- 列表 `<ul>` 增加 `divide-y divide-border/40 rounded-md border border-border/40 px-2 py-1` —— 借鉴 RefsPreview SectionBlock 的列表外观。
+点击卡片展开抽屉/折叠区，列出：
+- 命中的 DNAT 规则（外部目的 + 端口 → 该节点）
+- 以该节点为源的策略（节点 → 后端）
+- 以该节点为目的的策略（前端 → 节点）
 
-**F. GroupMembers 段标题**
-- ObjectName 卡片中"成员（N）"行套用 RefsPreview 段标题样式：`text-xs font-medium text-muted-foreground`，并提供"超过 N 个时截断 + 还有 X 个"提示（>30 截断，与 RefsPreview 一致）。
+顶部加搜索框 + 类别筛选 chips。空类别折叠。
 
-**G. PoolDetail**
-- 改为：`<L>起始</L> {addressFrom} [<L>结束</L> {addressTo}]`。
+### 二、访问关系 → "访问路径分析"
 
-**H. Hover 卡宽度**
-- 当前 `w-96`，配合更紧凑的两排布局够用；保持不变，仅在必要的 truncate 处加 `min-w-0`。
+输入区改为 3 个字段 + 1 个操作：
+- **源**：地址对象/组下拉 + 也接受字面 IP/CIDR 输入（自动反查"哪些对象包含它"，把展开后的名字集合一起参与匹配）
+- **目的**：同上
+- **服务（可选）**：服务对象/组下拉，或直接输入 `tcp/443` 这种字面端口
+- **⇄ 交换** 按钮
 
-### 不在此次改动范围
+结果区分四块：
 
-- 不改 parser / store / 业务字段。
-- 不改 hover 触发逻辑、`ObjectName` 对外 API。
-- 不改 RefsPreview 已有视觉（只抽离 L/DescQuote 共享原子）。
-- 不调 literal/unknown 的语义颜色规则。
+1. **结论横幅**：按策略列表里"首条命中"决定（permit/deny），文案如：
+   - ✅ 允许 · 命中策略 #12（permit）· 经过 DNAT #3 转换到 `web-backend-pool`
+   - ❌ 拒绝 · 命中策略 #25（deny）
+   - ⚠️ 有 DNAT 转换但无放行策略——可能不通
+   - · 无任何匹配
 
-### 受影响文件
+2. **DNAT 入口段**（仅当目的命中 NAT 时显示）：
+   `源 → 外部目的:端口 → [iface] → translatedPool[:port]`
+   带 iface、log、disabled 状态徽章。
 
-- `src/components/previewAtoms.tsx`（新建，导出 `L`、`DescQuote`）
-- `src/components/RefsPreview.tsx`（改 import，删除本地 L 定义；描述行换成 `DescQuote`）
-- `src/components/ObjectPreview.tsx`（按 B–G 重写各子组件）
+3. **路径图**（重画）：
+   - 节点链：源 → （若 translatedPool 命中 WAF/网关/堡垒等启发式）插入中间节点 → 最终目的
+   - 节点下小字标注：命中策略数 / NAT 数 / 服务摘要
+   - 用箭头颜色编码 permit=绿 / deny=红 / 仅 NAT=琥珀
+
+4. **命中策略表 + 命中 NAT 表**（保留现有列，加"命中序号"列；策略按 ID 排序模拟匹配顺序，首条 permit/deny 高亮）。
+
+边界处理：
+- 源和目的都是 `any` 时，不列全表，提示"请至少指定一端"。
+- 字面 IP 输入时，结果上方加一行"已展开为：addr-A, group-B …"。
+
+## 文件改动
+
+- `src/routes/intermediaries.tsx` — 重写为卡片 + 抽屉视图；新增按节点反查策略/NAT 的工具函数（在本文件内或 `src/lib/intermediaries.ts` 新建）。
+- `src/routes/access-graph.tsx` — 新增字面 IP/服务输入解析、服务过滤、结论横幅、DNAT 入口段、重画 `ChainView`、命中序号列、源目的交换。
+- 复用 `previewAtoms` 的 `L` / `DescQuote` 保持视觉一致；表格继续用 `DataTable` / `Badge` / `LineLink`。
+- 不改解析器、不改其他页面。
+
+## 不做
+
+- 不引入图形库（保留纯 Tailwind + SVG/divs 的链路图）。
+- 不做"模拟下发/测试包"——只在解析数据上做静态分析。
+- 不动 `/access-graph` 的路由路径，便于现有书签。
