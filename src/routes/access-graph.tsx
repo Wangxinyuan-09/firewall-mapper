@@ -403,7 +403,6 @@ function EndpointPicker({
 }) {
   const [open, setOpen] = useState(false);
   const displayValue = value === "any" ? "any" : value;
-  const isCustom = !options.includes(value);
 
   return (
     <div className="flex flex-col gap-1">
