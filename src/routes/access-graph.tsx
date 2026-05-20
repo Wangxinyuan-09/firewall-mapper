@@ -3,7 +3,7 @@ import { useConfigStore } from "@/lib/store";
 import { EmptyConfig } from "@/components/EmptyConfig";
 import { Badge, LineLink } from "@/components/DataTable";
 import { useShowFullPortRange, useShowLineNumbers } from "@/lib/uiPrefs";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Command,
   CommandEmpty,
@@ -383,14 +383,12 @@ function FlowCard({ flow }: { flow: Flow }) {
   const cat = classifyIntermediary(flow.dst);
   const hasDnat = flow.dnat.length > 0;
 
-  // group consecutive policies by (action, id) — by sorted id already
   const permitSegs = flow.policies.filter((s) => s.policy.action === "permit");
   const denySegs = flow.policies.filter((s) => s.policy.action === "deny");
   const otherSegs = flow.policies.filter(
     (s) => s.policy.action !== "permit" && s.policy.action !== "deny"
   );
 
-  // determine which permit is "first match" per port (mocked: first sorted permit not preceded by deny on same port)
   const firstHitPolicyId = (() => {
     for (const seg of flow.policies) {
       if (seg.policy.action === "permit" || seg.policy.action === "deny") {
@@ -400,69 +398,156 @@ function FlowCard({ flow }: { flow: Flow }) {
     return undefined;
   })();
 
+  // Build port-pill list for the row under dst node
+  const permitPortPills = [...flow.permitPorts].filter((p) => p !== "any");
+  const denyPortPills = [...flow.denyPorts].filter(
+    (p) => p !== "any" && !flow.permitPorts.has(p)
+  );
+  const hasAnyPermit = flow.permitPorts.has("any");
+  const gapSet = new Set(flow.coverage.gap);
+
   return (
     <article className="rounded-lg border border-border bg-card">
       {/* header */}
-      <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <NodeChip name={flow.src} role="src" />
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <ArrowRight className="h-4 w-4" />
-          {hasDnat ? (
-            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
-              DNAT
-            </span>
-          ) : (
-            <span>直连</span>
-          )}
-          <ArrowRight className="h-4 w-4" />
-        </div>
-        <NodeChip name={flow.dst} role="dst" cat={cat ?? undefined} />
+      <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+        <span className="font-mono text-sm font-medium">{flow.src}</span>
+        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+        {hasDnat ? (
+          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+            DNAT × {flow.dnat.length}
+          </span>
+        ) : (
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            直连
+          </span>
+        )}
+        <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+        <span className="font-mono text-sm font-medium">{flow.dst}</span>
+        {cat && (
+          <span className="rounded bg-secondary/60 px-1 text-[10px] uppercase text-muted-foreground">
+            {CAT_LABEL[cat]}
+          </span>
+        )}
         <div className="ml-auto">
           <CoverageBadge flow={flow} />
         </div>
       </header>
 
-      {/* DNAT entries */}
-      {hasDnat && (
-        <section className="border-b border-border px-4 py-3">
-          <div className="mb-1.5 text-xs font-medium text-muted-foreground">
-            入口端口聚合（{flow.dnat.length} 条 DNAT）
-          </div>
-          <div className="space-y-1 font-mono text-xs">
-            {flow.dnat.map((d) => (
-              <DnatRow key={d.rule.id} entry={d} showFull={showFull} showLineNo={showLineNo} dst={flow.dst} />
-            ))}
-          </div>
+      {/* visual vertical tree */}
+      <section className="overflow-x-auto border-b border-border bg-gradient-to-b from-secondary/20 to-transparent px-4 py-5">
+        <div className="mx-auto flex w-fit min-w-full flex-col items-center">
+          <NodeChip name={flow.src} role="src" />
+          <VLine />
+          {hasDnat && (
+            <>
+              <Fanout count={flow.dnat.length}>
+                {flow.dnat.map((d) => (
+                  <DnatNode
+                    key={d.rule.id}
+                    entry={d}
+                    showFull={showFull}
+                    gap={gapSet}
+                  />
+                ))}
+              </Fanout>
+              <VLine />
+            </>
+          )}
+          <NodeChip name={flow.dst} role="dst" cat={cat ?? undefined} />
+          {(permitPortPills.length > 0 ||
+            denyPortPills.length > 0 ||
+            hasAnyPermit ||
+            flow.policies.length === 0) && (
+            <>
+              <VLine />
+              <div className="flex max-w-xl flex-wrap items-center justify-center gap-1.5">
+                {flow.policies.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">
+                    无策略
+                  </span>
+                ) : (
+                  <>
+                    {hasAnyPermit && (
+                      <PortPill tone="permit">permit any</PortPill>
+                    )}
+                    {permitPortPills.map((p) => (
+                      <PortPill key={"p" + p} tone="permit">
+                        {p}
+                      </PortPill>
+                    ))}
+                    {denyPortPills.map((p) => (
+                      <PortPill key={"d" + p} tone="deny">
+                        {p}
+                      </PortPill>
+                    ))}
+                  </>
+                )}
+              </div>
+            </>
+          )}
           {flow.coverage.kind === "partial" && flow.coverage.gap.length > 0 && (
-            <div className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              ⚠ 未被任何 permit 策略覆盖的暴露端口：
+            <div className="mt-3 max-w-xl text-center text-xs text-amber-700 dark:text-amber-400">
+              ⚠ 未被 permit 覆盖的暴露端口:
               {flow.coverage.gap.map((g) => (
-                <code key={g} className="ml-1.5">
+                <code key={g} className="ml-1.5 rounded bg-amber-500/15 px-1 py-0.5">
                   {g}
                 </code>
               ))}
             </div>
           )}
-        </section>
-      )}
+        </div>
+      </section>
 
-      {/* Policies */}
-      <section className="px-4 py-3">
-        {flow.policies.length === 0 ? (
-          <div className="text-xs text-muted-foreground">
-            {hasDnat ? (
-              <span className="text-amber-700 dark:text-amber-400">
-                ⚠ 孤儿入口：有 DNAT 转换，但没有任何策略匹配该 源→目的——端口可能开了但不通
-              </span>
-            ) : (
-              "未配置任何放行/拒绝策略"
-            )}
+      {/* details: groups / lists */}
+      <section className="grid gap-4 px-4 py-3 md:grid-cols-2">
+        {/* DNAT details */}
+        <div>
+          <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <span>DNAT 明细</span>
+            <span className="text-[10px]">({flow.dnat.length})</span>
           </div>
-        ) : (
-          <>
-            <div className="mb-1.5 text-xs font-medium text-muted-foreground">
-              放行策略（按服务聚合，按 ID 排序）
+          {flow.dnat.length === 0 ? (
+            <div className="rounded border border-dashed border-border px-2 py-3 text-center text-xs text-muted-foreground">
+              无 NAT，直连流量
             </div>
+          ) : (
+            <div className="space-y-1 font-mono text-xs">
+              {flow.dnat.map((d) => (
+                <DnatRow
+                  key={d.rule.id}
+                  entry={d}
+                  showFull={showFull}
+                  showLineNo={showLineNo}
+                  dst={flow.dst}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Policy details */}
+        <div>
+          <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <span>策略明细</span>
+            <span className="text-[10px]">
+              (permit {permitSegs.length} · deny {denySegs.length}
+              {otherSegs.length ? ` · 其他 ${otherSegs.length}` : ""})
+            </span>
+          </div>
+          {flow.policies.length === 0 ? (
+            <div
+              className={cn(
+                "rounded border border-dashed px-2 py-3 text-center text-xs",
+                hasDnat
+                  ? "border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400"
+                  : "border-border text-muted-foreground"
+              )}
+            >
+              {hasDnat
+                ? "⚠ 孤儿入口：端口开了但无策略放行"
+                : "无任何放行/拒绝策略"}
+            </div>
+          ) : (
             <div className="space-y-1">
               {[...permitSegs, ...denySegs, ...otherSegs].map((seg) => (
                 <PolicyRow
@@ -473,10 +558,120 @@ function FlowCard({ flow }: { flow: Flow }) {
                 />
               ))}
             </div>
-          </>
-        )}
+          )}
+        </div>
       </section>
     </article>
+  );
+}
+
+// ---------- tree atoms ----------
+
+function VLine() {
+  return <div className="h-5 w-px bg-border" />;
+}
+
+function Fanout({
+  count,
+  children,
+}: {
+  count: number;
+  children: React.ReactNode;
+}) {
+  if (count <= 1) {
+    return <div className="flex justify-center">{children}</div>;
+  }
+  const arr = React.Children.toArray(children);
+  return (
+    <div className="flex items-stretch">
+      {arr.map((c, i) => (
+        <div key={i} className="flex flex-col items-center px-3">
+          <div className="relative h-3 w-full">
+            <div
+              className={cn(
+                "absolute top-0 h-px bg-border",
+                i === 0
+                  ? "left-1/2 right-0"
+                  : i === arr.length - 1
+                    ? "left-0 right-1/2"
+                    : "inset-x-0"
+              )}
+            />
+            <div className="absolute left-1/2 top-0 h-3 w-px -translate-x-1/2 bg-border" />
+          </div>
+          {c}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DnatNode({
+  entry,
+  showFull,
+  gap,
+}: {
+  entry: FlowDnatEntry;
+  showFull: boolean;
+  gap: Set<string>;
+}) {
+  const portChanged =
+    entry.entryPort &&
+    entry.backendPort &&
+    entry.entryPort !== entry.backendPort;
+  const backend = entry.backendPort;
+  const isGap = backend ? gap.has(backend) : false;
+  return (
+    <div
+      className={cn(
+        "rounded-md border bg-card px-2.5 py-1.5 text-center font-mono text-[11px] shadow-sm",
+        isGap
+          ? "border-amber-500/50 bg-amber-500/5"
+          : "border-amber-500/30"
+      )}
+    >
+      <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+        <span>#{entry.rule.id}</span>
+        {entry.rule.iface && <span>[{entry.rule.iface}]</span>}
+      </div>
+      <div className="text-foreground">{entry.entryAddr}</div>
+      <div className="flex items-center justify-center gap-1">
+        {entry.entryPort && (
+          <span className="text-muted-foreground">
+            :{fmtPort(entry.entryPort, showFull)}
+          </span>
+        )}
+        {portChanged && backend && (
+          <>
+            <ArrowRight className="h-2.5 w-2.5 text-muted-foreground" />
+            <span className="text-amber-700 dark:text-amber-400">
+              :{fmtPort(backend, showFull)}
+            </span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PortPill({
+  tone,
+  children,
+}: {
+  tone: "permit" | "deny";
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-0.5 font-mono text-[11px]",
+        tone === "permit"
+          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          : "border-destructive/40 bg-destructive/10 text-destructive"
+      )}
+    >
+      {children}
+    </span>
   );
 }
 
