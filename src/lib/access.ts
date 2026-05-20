@@ -249,3 +249,239 @@ export function buildNodeAggregates(cfg: ParsedConfig): NodeAggregate[] {
       a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name)
   );
 }
+
+// ---------- flow model: aggregate src→dst with DNAT + policies ----------
+
+export interface FlowDnatEntry {
+  rule: NatRule;
+  entryAddr: string;
+  entryPort: string; // "" if any
+  backendPort: string; // "" if not translated; equals entryPort when no port change
+}
+
+export interface FlowPolicySegment {
+  policy: PolicyRule;
+  ports: string[]; // expanded literal ports (or ["any"])
+}
+
+export type CoverageKind = "ok" | "partial" | "orphan" | "no-nat";
+
+export interface FlowCoverage {
+  kind: CoverageKind;
+  exposed: string[]; // expanded DNAT backend ports
+  gap: string[]; // exposed ports not covered by any permit
+}
+
+export interface Flow {
+  key: string;
+  src: string;
+  dst: string;
+  dnat: FlowDnatEntry[];
+  policies: FlowPolicySegment[];
+  permitPorts: Set<string>;
+  denyPorts: Set<string>;
+  allPorts: Set<string>; // union of dnat ports + policy ports (for service facet)
+  coverage: FlowCoverage;
+}
+
+/** Expand a service name (object/group) to literal "proto/port" strings. */
+export function serviceToPorts(
+  name: string,
+  cfg: ParsedConfig,
+  seen: Set<string> = new Set()
+): string[] {
+  if (!name || name === "any") return ["any"];
+  if (seen.has(name)) return [];
+  seen.add(name);
+  const svc = cfg.services.find((s) => s.name === name);
+  if (svc) {
+    return svc.entries.map((e) =>
+      e.destPort ? `${e.protocol}/${e.destPort}` : e.protocol
+    );
+  }
+  const grp = cfg.serviceGroups.find((g) => g.name === name);
+  if (grp) {
+    const out = new Set<string>();
+    grp.members.forEach((m) =>
+      serviceToPorts(m, cfg, seen).forEach((p) => out.add(p))
+    );
+    return [...out];
+  }
+  return [name]; // literal "tcp/443" or unknown
+}
+
+export function buildFlows(cfg: ParsedConfig): Flow[] {
+  const map = new Map<string, Flow>();
+  const ensure = (src: string, dst: string): Flow => {
+    const k = `${src}\t${dst}`;
+    let f = map.get(k);
+    if (!f) {
+      f = {
+        key: k,
+        src,
+        dst,
+        dnat: [],
+        policies: [],
+        permitPorts: new Set(),
+        denyPorts: new Set(),
+        allPorts: new Set(),
+        coverage: { kind: "no-nat", exposed: [], gap: [] },
+      };
+      map.set(k, f);
+    }
+    return f;
+  };
+
+  cfg.natRules.forEach((n) => {
+    if (n.kind !== "destination" && n.kind !== "static") return;
+    if (!n.translatedPool) return;
+    const entryPort =
+      n.origDstService && n.origDstService !== "any" ? n.origDstService : "";
+    const backendPort = n.servicePort || entryPort;
+    const f = ensure(n.srcAddr || "any", n.translatedPool);
+    f.dnat.push({
+      rule: n,
+      entryAddr: n.origDstAddr,
+      entryPort,
+      backendPort,
+    });
+    const expanded = backendPort ? serviceToPorts(backendPort, cfg) : ["any"];
+    expanded.forEach((p) => f.allPorts.add(p));
+  });
+
+  cfg.policies.forEach((p) => {
+    const f = ensure(p.srcAddr, p.dstAddr);
+    const ports = serviceToPorts(p.service, cfg);
+    f.policies.push({ policy: p, ports });
+    ports.forEach((port) => {
+      f.allPorts.add(port);
+      if (p.action === "permit") f.permitPorts.add(port);
+      else if (p.action === "deny") f.denyPorts.add(port);
+    });
+  });
+
+  map.forEach((f) => {
+    f.policies.sort(
+      (a, b) => Number(a.policy.id) - Number(b.policy.id) || a.policy.lineNo - b.policy.lineNo
+    );
+    if (f.dnat.length === 0) {
+      f.coverage = { kind: "no-nat", exposed: [], gap: [] };
+      return;
+    }
+    const exposedSet = new Set<string>();
+    f.dnat.forEach((d) => {
+      const ports = d.backendPort ? serviceToPorts(d.backendPort, cfg) : ["any"];
+      ports.forEach((p) => exposedSet.add(p));
+    });
+    const exposed = [...exposedSet];
+    const hasAnyPermit = f.permitPorts.has("any");
+    const gap = hasAnyPermit
+      ? []
+      : exposed.filter((p) => p !== "any" && !f.permitPorts.has(p));
+    const kind: CoverageKind =
+      f.permitPorts.size === 0 ? "orphan" : gap.length === 0 ? "ok" : "partial";
+    f.coverage = { kind, exposed, gap };
+  });
+
+  return [...map.values()];
+}
+
+export interface FacetOption {
+  name: string;
+  count: number;
+}
+
+export interface FlowFilter {
+  src?: string;
+  dst?: string;
+  svc?: string;
+  onlyDnat?: boolean;
+  onlyAbnormal?: boolean;
+}
+
+function flowMatchSrc(f: Flow, value: string | undefined, cfg: ParsedConfig): boolean {
+  if (!value || value === "any") return true;
+  if (f.src === "any") return true;
+  if (f.src === value) return true;
+  // literal IP / object — expand and check membership
+  const names = resolveEndpoint(value, cfg).names;
+  return names.has(f.src);
+}
+
+function flowMatchDst(f: Flow, value: string | undefined, cfg: ParsedConfig): boolean {
+  if (!value || value === "any") return true;
+  if (f.dst === "any") return true;
+  if (f.dst === value) return true;
+  const names = resolveEndpoint(value, cfg).names;
+  return names.has(f.dst);
+}
+
+function flowMatchSvc(f: Flow, value: string | undefined, cfg: ParsedConfig): boolean {
+  if (!value || value === "any") return true;
+  if (f.allPorts.has("any")) return true;
+  const ports = serviceToPorts(value, cfg);
+  return ports.some((p) => p === "any" || f.allPorts.has(p));
+}
+
+export function filterFlows(
+  flows: Flow[],
+  cfg: ParsedConfig,
+  filter: FlowFilter
+): Flow[] {
+  return flows.filter((f) => {
+    if (!flowMatchSrc(f, filter.src, cfg)) return false;
+    if (!flowMatchDst(f, filter.dst, cfg)) return false;
+    if (!flowMatchSvc(f, filter.svc, cfg)) return false;
+    if (filter.onlyDnat && f.dnat.length === 0) return false;
+    if (
+      filter.onlyAbnormal &&
+      f.coverage.kind !== "orphan" &&
+      f.coverage.kind !== "partial"
+    )
+      return false;
+    return true;
+  });
+}
+
+/** Facet options for one field, computed from flows filtered by the OTHER fields. */
+export function facetFor(
+  flows: Flow[],
+  cfg: ParsedConfig,
+  field: "src" | "dst" | "svc",
+  filter: FlowFilter
+): FacetOption[] {
+  const sub: FlowFilter = { ...filter };
+  if (field === "src") sub.src = undefined;
+  if (field === "dst") sub.dst = undefined;
+  if (field === "svc") sub.svc = undefined;
+  const list = filterFlows(flows, cfg, sub);
+  const m = new Map<string, number>();
+  if (field === "src") {
+    list.forEach((f) => m.set(f.src, (m.get(f.src) ?? 0) + 1));
+  } else if (field === "dst") {
+    list.forEach((f) => m.set(f.dst, (m.get(f.dst) ?? 0) + 1));
+  } else {
+    list.forEach((f) =>
+      f.allPorts.forEach((p) => m.set(p, (m.get(p) ?? 0) + 1))
+    );
+  }
+  return [...m.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+export function sortFlows(flows: Flow[]): Flow[] {
+  const score = (f: Flow): number => {
+    if (f.coverage.kind === "orphan") return 0;
+    if (f.coverage.kind === "partial") return 1;
+    if (f.dnat.length > 0) return 2;
+    return 3;
+  };
+  return [...flows].sort(
+    (a, b) =>
+      score(a) - score(b) ||
+      a.src.localeCompare(b.src) ||
+      a.dst.localeCompare(b.dst)
+  );
+}
+
