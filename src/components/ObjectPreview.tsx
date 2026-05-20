@@ -170,6 +170,7 @@ function ServiceEntries({ s }: { s: ServiceObject }) {
 
 function MemberRow({ m }: { m: string }) {
   const { cfg } = useConfigStore();
+  const [showFull] = useShowFullPortRange();
   if (!cfg) return null;
   const a = cfg.addresses.find((x) => x.name === m);
   const ag = cfg.addressGroups.find((x) => x.name === m);
@@ -188,12 +189,17 @@ function MemberRow({ m }: { m: string }) {
     summary = `${ag.members.length} 成员`;
   } else if (s) {
     kindTag = "服务对象";
+    const fmt = (p?: string) =>
+      p ? (!showFull && isFullPort(p) ? "any" : p) : "any";
     summary =
       s.entries
-        .map(
-          (e) =>
-            `${e.protocol}/${e.destPort ?? "any"}${e.sourcePort ? `←${e.sourcePort}` : ""}`,
-        )
+        .map((e) => {
+          const src =
+            e.sourcePort && !(!showFull && isFullPort(e.sourcePort))
+              ? `←${e.sourcePort}`
+              : "";
+          return `${e.protocol}/${fmt(e.destPort)}${src}`;
+        })
         .slice(0, 3)
         .join("，") + (s.entries.length > 3 ? " …" : "");
   } else if (sg) {
