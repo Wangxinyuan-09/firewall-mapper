@@ -97,15 +97,15 @@ function useResolve(name: string): Resolved {
 }
 
 const kindLabel: Record<Kind, string> = {
-  address: "地址",
+  address: "地址对象",
   "address-group": "地址组",
-  service: "服务",
+  service: "服务对象",
   "service-group": "服务组",
   "nat-pool": "NAT 池",
   "literal-ip": "字面 IP",
   "literal-port": "字面端口",
   "literal-any": "通配",
-  unknown: "未定义",
+  unknown: "未定义引用",
 };
 
 
