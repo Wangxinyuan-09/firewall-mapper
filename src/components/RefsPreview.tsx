@@ -185,9 +185,7 @@ function GroupLine({
         </span>
       </div>
       {description && (
-        <div className="text-[11px] text-muted-foreground line-clamp-2 break-all border-l-2 border-border pl-2 italic">
-          {description}
-        </div>
+        <DescQuote className="text-[11px] line-clamp-2">{description}</DescQuote>
       )}
     </div>
   );
