@@ -326,8 +326,6 @@ function NodeDetail({ node }: { node: NodeAggregate }) {
             未发现任何引用——可能为孤立对象。
           </p>
         )}
-      {/* keep unused helper to avoid breaking imports if later wired */}
-      {void goAccess}
     </div>
   );
 }
