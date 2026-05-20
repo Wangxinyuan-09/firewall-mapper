@@ -73,6 +73,8 @@ function AccessGraphPage() {
   const { cfg } = useConfigStore();
   const [src, setSrc] = useState<string>("any");
   const [dst, setDst] = useState<string>("any");
+  const [showLineNo] = useShowLineNumbers();
+
 
   const allNames = useMemo(() => {
     if (!cfg) return [] as string[];
