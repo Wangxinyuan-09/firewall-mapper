@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   HoverCard,
   HoverCardContent,
@@ -60,65 +60,123 @@ function cmpId(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
-/** Highlight: render bold/primary if value equals the previewed object name */
+/** Field label — small uppercase muted text */
+function L({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 mr-0.5 font-sans">
+      {children}
+    </span>
+  );
+}
+
+/** Highlight: bold/primary if value equals the previewed object name */
 function H({ hit, value }: { hit: string; value: string }) {
   const v = value || "—";
   if (v === hit) {
-    return (
-      <strong className="font-semibold text-primary">{v}</strong>
-    );
+    return <strong className="font-semibold text-primary">{v}</strong>;
   }
   return <span className="text-foreground">{v}</span>;
 }
 
 function PolicyLine({ p, hit }: { p: PolicyRule; hit: string }) {
   const action = actionLabel[p.action] ?? p.action;
-  const actionTone = p.action === "permit" ? "ok" : p.action === "deny" ? "danger" : "muted";
+  const actionTone =
+    p.action === "permit" ? "ok" : p.action === "deny" ? "danger" : "muted";
   const showSchedule = p.schedule && p.schedule !== "always" && p.schedule !== "-";
-  const showZone = (p.srcZone || p.dstZone) && !(p.srcZone === "any" && p.dstZone === "any");
+  const showZone =
+    (p.srcZone || p.dstZone) && !(p.srcZone === "any" && p.dstZone === "any");
+  const hasMeta = showZone || showSchedule || p.id;
   return (
-    <div className="flex items-baseline gap-1.5 flex-wrap font-mono text-xs">
-      <H hit={hit} value={p.srcAddr} />
-      <span className="text-muted-foreground">→</span>
-      <H hit={hit} value={p.dstAddr} />
-      <span className="text-muted-foreground">服务</span>
-      <H hit={hit} value={p.service} />
-      <Badge tone={actionTone}>{action}</Badge>
-      {showZone && (
-        <Badge tone="muted">
-          {p.srcZone || "any"}→{p.dstZone || "any"}
-        </Badge>
+    <div className="space-y-0.5">
+      <div className="flex items-baseline gap-x-3 gap-y-1 flex-wrap font-mono text-sm">
+        <span className="flex items-baseline gap-1">
+          <L>源</L>
+          <H hit={hit} value={p.srcAddr} />
+        </span>
+        <span className="flex items-baseline gap-1">
+          <L>目的</L>
+          <H hit={hit} value={p.dstAddr} />
+        </span>
+        <span className="flex items-baseline gap-1">
+          <L>服务</L>
+          <H hit={hit} value={p.service} />
+        </span>
+        <span className="ml-auto">
+          <Badge tone={actionTone}>{action}</Badge>
+        </span>
+      </div>
+      {hasMeta && (
+        <div className="flex items-baseline gap-x-3 gap-y-0.5 flex-wrap text-[11px] text-muted-foreground pl-0.5">
+          {showZone && (
+            <span className="flex items-baseline gap-1">
+              <L>区域</L>
+              <span className="font-mono">
+                {p.srcZone || "any"}→{p.dstZone || "any"}
+              </span>
+            </span>
+          )}
+          {showSchedule && (
+            <span className="flex items-baseline gap-1">
+              <L>调度</L>
+              <span className="font-mono text-amber-600">仅 {p.schedule}</span>
+            </span>
+          )}
+          {p.id && (
+            <span className="ml-auto font-mono">#{p.id}</span>
+          )}
+        </div>
       )}
-      {showSchedule && <Badge tone="warn">仅 {p.schedule}</Badge>}
-      <span className="ml-auto text-muted-foreground">#{p.id}</span>
     </div>
   );
 }
 
 function NatLine({ n, hit }: { n: NatRule; hit: string }) {
   const k = natKindLabel[n.kind] ?? n.kind;
+  const hasMeta = n.disabled || n.log || n.description || n.id;
   return (
     <div className="space-y-0.5">
-      <div className="flex items-baseline gap-1.5 flex-wrap font-mono text-xs">
-        <H hit={hit} value={n.srcAddr} />
-        <span className="text-muted-foreground">→</span>
-        <H hit={hit} value={n.origDstAddr} />
-        {n.origDstService && (
-          <span className="text-muted-foreground">:{n.origDstService}</span>
-        )}
-        <span className="text-muted-foreground">⇒</span>
-        <H hit={hit} value={n.translatedPool} />
-        {n.servicePort && (
-          <span className="text-muted-foreground">:{n.servicePort}</span>
-        )}
-        <Badge tone="default">{k}</Badge>
-        {n.disabled && <Badge tone="muted">已禁用</Badge>}
-        {n.log && <Badge tone="muted">log</Badge>}
-        <span className="ml-auto text-muted-foreground">#{n.id}</span>
+      <div className="flex items-baseline gap-x-3 gap-y-1 flex-wrap font-mono text-sm">
+        <span className="flex items-baseline gap-1">
+          <L>原始</L>
+          <H hit={hit} value={n.srcAddr} />
+          <span className="text-muted-foreground">→</span>
+          <H hit={hit} value={n.origDstAddr} />
+          {n.origDstService && (
+            <span className="text-muted-foreground">:{n.origDstService}</span>
+          )}
+        </span>
+        <span className="flex items-baseline gap-1">
+          <L>转换为</L>
+          <H hit={hit} value={n.translatedPool} />
+          {n.servicePort && (
+            <span className="text-muted-foreground">:{n.servicePort}</span>
+          )}
+        </span>
+        <span className="ml-auto">
+          <Badge tone="default">{k}</Badge>
+        </span>
       </div>
-      {n.description && (
-        <div className="text-muted-foreground italic break-all">
-          {n.description}
+      {hasMeta && (
+        <div className="flex items-baseline gap-x-3 gap-y-0.5 flex-wrap text-[11px] text-muted-foreground pl-0.5">
+          {n.disabled && (
+            <span className="flex items-baseline gap-1">
+              <L>状态</L>
+              <span className="text-amber-600">已禁用</span>
+            </span>
+          )}
+          {n.log && (
+            <span className="flex items-baseline gap-1">
+              <L>日志</L>
+              <span>log</span>
+            </span>
+          )}
+          {n.id && <span className="font-mono">#{n.id}</span>}
+          {n.description && (
+            <span className="flex items-baseline gap-1 min-w-0 flex-1">
+              <L>说明</L>
+              <span className="line-clamp-2 break-all">{n.description}</span>
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -138,13 +196,19 @@ function GroupLine({
 }) {
   return (
     <div className="space-y-0.5">
-      <div className="flex items-baseline gap-1.5 flex-wrap font-mono text-xs">
-        <H hit={hit} value={name} />
-        <Badge tone="muted">成员 {count}</Badge>
+      <div className="flex items-baseline gap-x-3 flex-wrap font-mono text-sm">
+        <span className="flex items-baseline gap-1">
+          <L>名称</L>
+          <H hit={hit} value={name} />
+        </span>
+        <span className="ml-auto">
+          <Badge tone="muted">成员 {count}</Badge>
+        </span>
       </div>
       {description && (
-        <div className="text-muted-foreground italic break-all">
-          {description}
+        <div className="flex items-baseline gap-1 text-[11px] text-muted-foreground pl-0.5">
+          <L>说明</L>
+          <span className="line-clamp-2 break-all">{description}</span>
         </div>
       )}
     </div>
@@ -153,7 +217,6 @@ function GroupLine({
 
 interface Section {
   by: RefUsage["by"];
-  /** Already sorted (priority first, any-any last). */
   items: RefUsage[];
   anyAnyCount: number;
 }
@@ -234,7 +297,7 @@ export function RefsPreview({
         </span>
       </HoverCardTrigger>
       <HoverCardContent
-        className="w-[36rem] max-h-[28rem] overflow-auto"
+        className="w-[40rem] max-h-[28rem] overflow-auto"
         align="start"
       >
         <div className="space-y-3">
@@ -245,12 +308,7 @@ export function RefsPreview({
             </span>
           </div>
           {sections.map((s) => (
-            <SectionBlock
-              key={s.by}
-              section={s}
-              hit={name}
-              cfg={cfg!}
-            />
+            <SectionBlock key={s.by} section={s} hit={name} cfg={cfg!} />
           ))}
         </div>
       </HoverCardContent>
@@ -289,7 +347,7 @@ function SectionBlock({
           <button
             type="button"
             onClick={() => setShowAny((v) => !v)}
-            className="text-primary hover:underline"
+            className="text-primary hover:text-primary/80 hover:underline"
           >
             {showAny ? "收起" : "展开"} {anyAnyCount} 条 any-any 引用
           </button>
@@ -301,12 +359,9 @@ function SectionBlock({
         </div>
       )}
       {shown.length > 0 && (
-        <ul className="space-y-1.5">
+        <ul className="divide-y divide-border/40 rounded-md border border-border/40">
           {shown.map((r, i) => (
-            <li
-              key={i}
-              className="border-l-2 border-border pl-2 py-0.5"
-            >
+            <li key={i} className="py-1.5 px-2">
               {by === "policy" && (() => {
                 const p = cfg.policies.find((x) => x.id === r.id);
                 return p ? (
@@ -352,7 +407,7 @@ function SectionBlock({
             </li>
           ))}
           {visibleItems.length > shown.length && (
-            <li className="text-xs text-muted-foreground pl-2">
+            <li className="text-xs text-muted-foreground py-1.5 px-2">
               …还有 {visibleItems.length - shown.length} 处
             </li>
           )}
