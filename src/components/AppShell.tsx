@@ -2,6 +2,8 @@ import { Link, useLocation } from "@tanstack/react-router";
 import { useConfigStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { useShowLineNumbers } from "@/lib/uiPrefs";
 
 const nav = [
   { to: "/", label: "概览" },
