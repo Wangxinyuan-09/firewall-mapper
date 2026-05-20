@@ -1,8 +1,14 @@
 import { Link, useLocation } from "@tanstack/react-router";
+import { Settings2 } from "lucide-react";
 import { useConfigStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useShowLineNumbers, useShowFullPortRange } from "@/lib/uiPrefs";
 
 const nav = [
@@ -17,11 +23,69 @@ const nav = [
   { to: "/raw", label: "原文" },
 ] as const;
 
+function DisplaySettings() {
+  const [showLineNo, setShowLineNo] = useShowLineNumbers();
+  const [showFullPort, setShowFullPort] = useShowFullPortRange();
+  const activeCount = (showLineNo ? 1 : 0) + (showFullPort ? 1 : 0);
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 gap-1.5 px-2 text-xs text-muted-foreground"
+          title="显示选项"
+        >
+          <Settings2 className="h-3.5 w-3.5" />
+          <span>显示</span>
+          {activeCount > 0 && (
+            <span className="ml-0.5 rounded bg-primary/15 px-1 text-[10px] font-medium text-primary">
+              {activeCount}
+            </span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 p-3">
+        <div className="mb-2 text-xs font-medium text-muted-foreground">
+          显示选项
+        </div>
+        <div className="space-y-3">
+          <label className="flex cursor-pointer select-none items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm">显示行号</div>
+              <div className="text-xs text-muted-foreground">
+                仅用于追溯原始配置文本，平时无需打开
+              </div>
+            </div>
+            <Switch
+              checked={showLineNo}
+              onCheckedChange={setShowLineNo}
+              className="mt-0.5"
+            />
+          </label>
+          <label className="flex cursor-pointer select-none items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm">显示全端口范围</div>
+              <div className="text-xs text-muted-foreground">
+                默认把 1-65535 显示为 any
+              </div>
+            </div>
+            <Switch
+              checked={showFullPort}
+              onCheckedChange={setShowFullPort}
+              className="mt-0.5"
+            />
+          </label>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { cfg, fileName, clear } = useConfigStore();
   const loc = useLocation();
-  const [showLineNo, setShowLineNo] = useShowLineNumbers();
-  const [showFullPort, setShowFullPort] = useShowFullPortRange();
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -49,21 +113,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </nav>
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <label
-              className="flex items-center gap-1.5 cursor-pointer select-none"
-              title="仅用于追溯原始配置文本，平时无需打开"
-            >
-              <span>行号</span>
-              <Switch checked={showLineNo} onCheckedChange={setShowLineNo} />
-            </label>
-            <label
-              className="flex items-center gap-1.5 cursor-pointer select-none"
-              title="默认隐藏 1-65535 全端口范围（视为 any）"
-            >
-              <span>全端口</span>
-              <Switch checked={showFullPort} onCheckedChange={setShowFullPort} />
-            </label>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <DisplaySettings />
             {cfg ? (
               <>
                 <span className="rounded bg-secondary px-2 py-1 font-mono">
