@@ -20,6 +20,7 @@ const nav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { cfg, fileName, clear } = useConfigStore();
   const loc = useLocation();
+  const [showLineNo, setShowLineNo] = useShowLineNumbers();
 
   return (
     <div className="min-h-screen bg-background text-foreground">
