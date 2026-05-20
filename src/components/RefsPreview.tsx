@@ -35,7 +35,7 @@ function useEnrich() {
           title: `NAT #${n.id}`,
           action: n.kind,
           sub:
-            n.kind === "dnat"
+            n.kind === "destination"
               ? `${n.srcAddr} → ${n.origDstAddr}:${n.origDstService} ⇒ ${n.translatedPool}`
               : `${n.srcAddr} → ${n.origDstAddr} ⇒ ${n.translatedPool}`,
           desc: n.description,
