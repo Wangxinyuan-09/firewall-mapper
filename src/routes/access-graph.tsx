@@ -3,7 +3,7 @@ import { useConfigStore } from "@/lib/store";
 import { EmptyConfig } from "@/components/EmptyConfig";
 import { Badge, LineLink } from "@/components/DataTable";
 import { useShowFullPortRange, useShowLineNumbers } from "@/lib/uiPrefs";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Command,
   CommandEmpty,
