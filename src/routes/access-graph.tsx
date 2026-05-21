@@ -21,6 +21,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
@@ -43,6 +48,7 @@ import {
   type FocusCandidate,
   type FlowDnatEntry,
 } from "@/lib/access";
+import { ObjectName } from "@/components/ObjectPreview";
 import { cn } from "@/lib/utils";
 
 interface SearchParams {
@@ -433,34 +439,28 @@ function GroupSummary({ rows }: { rows: FocusLine[] }) {
   const permitRows = rows.filter((r) => r.action === "permit").length;
   const denyRows = rows.filter((r) => r.action === "deny").length;
   const missingRows = rows.filter((r) => r.action === "none").length;
+  const parts: { label: string; cls?: string }[] = [
+    { label: `${total} 条` },
+  ];
+  if (natRows > 0) parts.push({ label: `DNAT ${natRows}`, cls: "text-amber-700 dark:text-amber-300" });
+  if (permitRows > 0) parts.push({ label: `permit ${permitRows}`, cls: "text-emerald-700 dark:text-emerald-300" });
+  if (denyRows > 0) parts.push({ label: `deny ${denyRows}`, cls: "text-destructive" });
+  if (missingRows > 0)
+    parts.push({
+      label: `未关联策略 ${missingRows}`,
+      cls: "text-amber-700 dark:text-amber-300 font-medium",
+    });
   return (
-    <span className="ml-auto flex flex-wrap items-center gap-1.5 text-[10px]">
-      <span className="rounded bg-secondary/60 px-1.5 py-0.5">
-        {total} 条
-      </span>
-      {natRows > 0 && (
-        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
-          NAT {natRows}
-        </span>
-      )}
-      {permitRows > 0 && (
-        <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300">
-          permit {permitRows}
-        </span>
-      )}
-      {denyRows > 0 && (
-        <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive">
-          deny {denyRows}
-        </span>
-      )}
-      {missingRows > 0 && (
-        <span
-          className="rounded border border-amber-500/60 bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-700 dark:text-amber-300"
-          title="DNAT 暴露但未找到匹配安全策略的行数"
-        >
-          策略缺失 {missingRows}
-        </span>
-      )}
+    <span
+      className="ml-auto flex items-center gap-1.5 text-[11px] text-muted-foreground"
+      title="DNAT 暴露但未找到匹配安全策略 = 未关联策略"
+    >
+      {parts.map((p, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <span className="opacity-40">·</span>}
+          <span className={p.cls}>{p.label}</span>
+        </React.Fragment>
+      ))}
     </span>
   );
 }
@@ -602,6 +602,13 @@ function FocusLineRow({
   hideDst?: boolean;
   hideSvc?: boolean;
 }) {
+  // 状态色条语义：
+  //   未关联策略 → amber（缺失）
+  //   deny       → 红（拒绝）
+  //   permit+部分覆盖 → amber/60（覆盖不全）
+  //   permit+NAT → 蓝（有转换，正常）
+  //   permit direct → emerald（直连放通）
+  const hasNat = line.nat.length > 0;
   const accent =
     line.action === "none"
       ? "border-l-amber-500"
@@ -609,35 +616,51 @@ function FocusLineRow({
         ? "border-l-destructive"
         : line.coverageKind === "partial"
           ? "border-l-amber-500/60"
-          : "border-l-transparent";
+          : hasNat
+            ? "border-l-blue-500/70"
+            : "border-l-emerald-500/60";
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-2 rounded-md border border-border border-l-4 bg-background/40 px-2 py-1.5 text-xs",
-        accent
+        "grid items-center gap-x-2 gap-y-1 rounded-md border border-border border-l-4 bg-background/40 px-2 py-1.5 text-xs",
+        "grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)_minmax(0,auto)_minmax(0,auto)]"
       )}
     >
-      {!hideSrc && (
-        <>
-          <NodeChip name={line.src} role="src" />
-          <Connector />
-        </>
-      )}
-      <NatToken nat={line.nat} />
-      <Connector />
-      {!hideDst && <NodeChip name={line.dst} role="dst" />}
-      {!hideDst && <Connector />}
-      {!hideSvc && <SvcChip svc={line.service} />}
-      <ActionBadge action={line.action} />
-      {line.policies.length > 0 && (
-        <PolicyCountBadge policies={line.policies} />
-      )}
+      {/* 1. 来源 */}
+      <div className="flex min-w-0 items-center">
+        {!hideSrc ? <NodeChip name={line.src} role="src" /> : <Placeholder />}
+      </div>
+      {/* 2. NAT / direct */}
+      <div className="flex min-w-0 items-center gap-1.5">
+        <Connector />
+        <NatToken nat={line.nat} />
+        <Connector />
+      </div>
+      {/* 3. 目的 */}
+      <div className="flex min-w-0 items-center">
+        {!hideDst ? <NodeChip name={line.dst} role="dst" /> : <Placeholder />}
+      </div>
+      {/* 4. 服务 */}
+      <div className="flex min-w-0 items-center pl-1">
+        {!hideSvc ? <SvcChip svc={line.service} /> : <Placeholder />}
+      </div>
+      {/* 5. 策略状态（固定最右） */}
+      <div className="flex items-center justify-end gap-1.5 pl-1">
+        <ActionBadge action={line.action} />
+        {line.policies.length > 0 && (
+          <PolicyCountBadge policies={line.policies} />
+        )}
+      </div>
     </div>
   );
 }
 
 function Connector() {
   return <span className="h-px w-3 shrink-0 bg-border" />;
+}
+
+function Placeholder() {
+  return <span className="font-mono text-xs text-muted-foreground/40">—</span>;
 }
 
 // ---------- NodeChip / SvcChip / ActionBadge ----------
@@ -657,15 +680,15 @@ function NodeChip({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs",
+        "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs",
         cls
       )}
     >
-      <span className={name === "any" ? "text-muted-foreground" : ""}>
-        {name}
+      <span className="min-w-0 truncate">
+        <ObjectName name={name} />
       </span>
       {cat && (
-        <span className="rounded bg-background/60 px-1 text-[10px] uppercase text-muted-foreground">
+        <span className="shrink-0 rounded bg-background/60 px-1 text-[10px] uppercase text-muted-foreground">
           {CAT_LABEL[cat]}
         </span>
       )}
@@ -814,6 +837,8 @@ function NatToken({ nat }: { nat: FlowDnatEntry[] }) {
   );
 }
 
+// 主图短格式：DNAT #203  防火墙IP:11743 → api-172.23.51.28:11743
+// hover 展示完整 "转换为" 字段 + iface / 行号 / disabled
 function DnatLabel({
   entry,
   showFull,
@@ -829,11 +854,10 @@ function DnatLabel({
   const backendPort = entry.backendPort
     ? fmtPort(entry.backendPort, showFull)
     : "";
-  const portChanged = entryPort && backendPort && entryPort !== backendPort;
-  return (
+  const trigger = (
     <span
       className={cn(
-        "inline-flex flex-wrap items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px]",
+        "inline-flex min-w-0 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] hover:bg-amber-500/15",
         block && "w-full"
       )}
     >
@@ -841,37 +865,67 @@ function DnatLabel({
         {kind}
       </span>
       <span className="text-muted-foreground">#{entry.rule.id}</span>
-      <span>{entry.entryAddr}</span>
-      {entryPort && <span className="text-muted-foreground">:{entryPort}</span>}
-      <span className="px-0.5 text-amber-700 dark:text-amber-400">
-        转换为
+      <span className="truncate">
+        {entry.entryAddr}
+        {entryPort && <span className="text-muted-foreground">:{entryPort}</span>}
       </span>
-      <span className="text-amber-700 dark:text-amber-300">
+      <ArrowRight className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+      <span className="truncate text-amber-700 dark:text-amber-300">
         {entry.rule.translatedPool}
+        {backendPort && <span>:{backendPort}</span>}
       </span>
-      {backendPort && (
-        <span
-          className={cn(
-            portChanged
-              ? "font-semibold text-amber-700 dark:text-amber-300"
-              : "text-muted-foreground"
-          )}
-        >
-          :{backendPort}
-        </span>
-      )}
-      {entry.rule.iface && (
-        <span className="text-[10px] text-muted-foreground">
-          [{entry.rule.iface}]
-        </span>
-      )}
-      {entry.rule.disabled && <Badge tone="warn">disabled</Badge>}
-      {showLineNo && block && (
-        <span className="ml-auto">
-          <LineLink line={entry.rule.lineNo} />
-        </span>
+      {entry.rule.disabled && (
+        <Badge tone="warn">disabled</Badge>
       )}
     </span>
+  );
+
+  return (
+    <HoverCard openDelay={120} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <span className="cursor-help">{trigger}</span>
+      </HoverCardTrigger>
+      <HoverCardContent align="start" className="w-[26rem] p-3">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+            {kind} #{entry.rule.id}
+          </span>
+          {entry.rule.iface && (
+            <span className="text-[11px] text-muted-foreground">
+              接口 {entry.rule.iface}
+            </span>
+          )}
+          {entry.rule.disabled && <Badge tone="warn">disabled</Badge>}
+          {showLineNo && (
+            <span className="ml-auto">
+              <LineLink line={entry.rule.lineNo} />
+            </span>
+          )}
+        </div>
+        <div className="space-y-1.5 font-mono text-xs">
+          <div className="flex items-baseline gap-2">
+            <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+              原始目的
+            </span>
+            <span className="break-all">
+              {entry.entryAddr}
+              {entryPort && (
+                <span className="text-muted-foreground">:{entryPort}</span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-400">
+              转换为
+            </span>
+            <span className="break-all text-amber-700 dark:text-amber-300">
+              {entry.rule.translatedPool}
+              {backendPort && <span>:{backendPort}</span>}
+            </span>
+          </div>
+        </div>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
