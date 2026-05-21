@@ -433,43 +433,63 @@ function FlowCard({ flow }: { flow: Flow }) {
         </div>
       </header>
 
-      {/* visual vertical tree */}
+      {/* visual horizontal flow */}
       <section className="overflow-x-auto border-b border-border bg-gradient-to-b from-secondary/20 to-transparent px-4 py-5">
-        <div className="mx-auto flex w-fit min-w-full flex-col items-center">
-          <NodeChip name={flow.src} role="src" />
-          <VLine />
-          {hasDnat && (
+        <div className="flex w-fit min-w-full items-stretch">
+          {/* src */}
+          <div className="flex items-center">
+            <NodeChip name={flow.src} role="src" />
+          </div>
+
+          {/* DNAT segment or direct */}
+          {hasDnat ? (
             <>
-              <Fanout count={flow.dnat.length}>
+              <Bracket count={flow.dnat.length} side="left" />
+              <div className="flex flex-col justify-center gap-2 py-1">
                 {flow.dnat.map((d) => (
-                  <DnatNode
-                    key={d.rule.id}
-                    entry={d}
-                    showFull={showFull}
-                    gap={gapSet}
-                  />
+                  <div key={d.rule.id} className="flex items-center">
+                    <div className="h-px w-2 bg-border" />
+                    <DnatNode
+                      entry={d}
+                      showFull={showFull}
+                      gap={gapSet}
+                    />
+                    <div className="h-px w-2 bg-border" />
+                  </div>
                 ))}
-              </Fanout>
-              <VLine />
+              </div>
+              <Bracket count={flow.dnat.length} side="right" />
             </>
+          ) : (
+            <div className="flex items-center">
+              <div className="h-px w-12 bg-border" />
+              <span className="px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                直连
+              </span>
+              <div className="h-px w-12 bg-border" />
+            </div>
           )}
-          <NodeChip name={flow.dst} role="dst" cat={cat ?? undefined} />
+
+          {/* dst */}
+          <div className="flex items-center">
+            <NodeChip name={flow.dst} role="dst" cat={cat ?? undefined} />
+          </div>
+
+          {/* policy pill column */}
           {(permitPortPills.length > 0 ||
             denyPortPills.length > 0 ||
             hasAnyPermit ||
             flow.policies.length === 0) && (
             <>
-              <VLine />
-              <div className="flex max-w-xl flex-wrap items-center justify-center gap-1.5">
+              <div className="flex items-center">
+                <div className="h-px w-6 bg-border" />
+              </div>
+              <div className="flex flex-col items-start justify-center gap-1 py-1">
                 {flow.policies.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">
-                    无策略
-                  </span>
+                  <span className="text-xs text-muted-foreground">无策略</span>
                 ) : (
                   <>
-                    {hasAnyPermit && (
-                      <PortPill tone="permit">permit any</PortPill>
-                    )}
+                    {hasAnyPermit && <PortPill tone="permit">permit any</PortPill>}
                     {permitPortPills.map((p) => (
                       <PortPill key={"p" + p} tone="permit">
                         {p}
@@ -485,17 +505,17 @@ function FlowCard({ flow }: { flow: Flow }) {
               </div>
             </>
           )}
-          {flow.coverage.kind === "partial" && flow.coverage.gap.length > 0 && (
-            <div className="mt-3 max-w-xl text-center text-xs text-amber-700 dark:text-amber-400">
-              ⚠ 未被 permit 覆盖的暴露端口:
-              {flow.coverage.gap.map((g) => (
-                <code key={g} className="ml-1.5 rounded bg-amber-500/15 px-1 py-0.5">
-                  {g}
-                </code>
-              ))}
-            </div>
-          )}
         </div>
+        {flow.coverage.kind === "partial" && flow.coverage.gap.length > 0 && (
+          <div className="mt-3 text-xs text-amber-700 dark:text-amber-400">
+            ⚠ 未被 permit 覆盖的暴露端口:
+            {flow.coverage.gap.map((g) => (
+              <code key={g} className="ml-1.5 rounded bg-amber-500/15 px-1 py-0.5">
+                {g}
+              </code>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* details: groups / lists */}
@@ -567,41 +587,27 @@ function FlowCard({ flow }: { flow: Flow }) {
 
 // ---------- tree atoms ----------
 
-function VLine() {
-  return <div className="h-5 w-px bg-border" />;
-}
-
-function Fanout({
-  count,
-  children,
-}: {
-  count: number;
-  children: React.ReactNode;
-}) {
+function Bracket({ count, side }: { count: number; side: "left" | "right" }) {
+  // Single child: just a horizontal connector
   if (count <= 1) {
-    return <div className="flex justify-center">{children}</div>;
+    return (
+      <div className="flex items-center">
+        <div className="h-px w-4 bg-border" />
+      </div>
+    );
   }
-  const arr = React.Children.toArray(children);
+  // Multi: vertical trunk on inner edge spanning roughly first-card-center to
+  // last-card-center, plus a horizontal stub at vertical center toward the outer node.
   return (
-    <div className="flex items-stretch">
-      {arr.map((c, i) => (
-        <div key={i} className="flex flex-col items-center px-3">
-          <div className="relative h-3 w-full">
-            <div
-              className={cn(
-                "absolute top-0 h-px bg-border",
-                i === 0
-                  ? "left-1/2 right-0"
-                  : i === arr.length - 1
-                    ? "left-0 right-1/2"
-                    : "inset-x-0"
-              )}
-            />
-            <div className="absolute left-1/2 top-0 h-3 w-px -translate-x-1/2 bg-border" />
-          </div>
-          {c}
-        </div>
-      ))}
+    <div className="relative w-4 self-stretch">
+      <div
+        className={cn(
+          "absolute w-px bg-border",
+          side === "left" ? "right-0" : "left-0"
+        )}
+        style={{ top: "1.75rem", bottom: "1.75rem" }}
+      />
+      <div className="absolute left-0 right-0 top-1/2 h-px bg-border" />
     </div>
   );
 }
