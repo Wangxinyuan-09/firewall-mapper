@@ -519,7 +519,7 @@ function SvcFocusView({ svc, lines }: { svc: string; lines: FocusLine[] }) {
           </div>
           <div className="space-y-1.5">
             {sortRows(rows).map((l) => (
-              <FocusLineRow key={l.key} line={l} hideSrc={false} hideSvc />
+              <FocusLineRow key={l.key} line={l} hideSrc={false} hideSvc mutedDst />
             ))}
           </div>
         </FocusCard>
