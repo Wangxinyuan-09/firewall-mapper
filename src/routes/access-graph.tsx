@@ -680,15 +680,15 @@ function NodeChip({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs",
+        "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs",
         cls
       )}
     >
-      <span className={name === "any" ? "text-muted-foreground" : ""}>
-        {name}
+      <span className="min-w-0 truncate">
+        <ObjectName name={name} />
       </span>
       {cat && (
-        <span className="rounded bg-background/60 px-1 text-[10px] uppercase text-muted-foreground">
+        <span className="shrink-0 rounded bg-background/60 px-1 text-[10px] uppercase text-muted-foreground">
           {CAT_LABEL[cat]}
         </span>
       )}
