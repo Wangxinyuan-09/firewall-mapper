@@ -451,12 +451,148 @@ function pickMatchingDnat(
   });
 }
 
+// ---------- address / service overlap matching (NAT ↔ policy association) ----------
+
+/** Recursively expand an address(-group) to all member address-object names. */
+function collectAddressMembers(
+  name: string,
+  cfg: ParsedConfig,
+  seen: Set<string> = new Set()
+): Set<string> {
+  const out = new Set<string>();
+  if (seen.has(name)) return out;
+  seen.add(name);
+  out.add(name);
+  const grp = cfg.addressGroups.find((g) => g.name === name);
+  if (grp) {
+    grp.members.forEach((m) => {
+      collectAddressMembers(m, cfg, seen).forEach((x) => out.add(x));
+    });
+  }
+  return out;
+}
+
+/** True if A and B address sets overlap, or either side is "any". */
+export function addrMatches(
+  a: string,
+  b: string,
+  cfg: ParsedConfig
+): boolean {
+  if (!a || !b) return false;
+  if (a === "any" || b === "any") return true;
+  if (a === b) return true;
+  const A = collectAddressMembers(a, cfg);
+  if (A.has(b)) return true;
+  const B = collectAddressMembers(b, cfg);
+  if (B.has(a)) return true;
+  for (const x of A) if (B.has(x)) return true;
+  return false;
+}
+
+/** True if policy service covers natPort (proto/port literal), or either is "any". */
+export function svcMatches(
+  policySvc: string,
+  natPort: string,
+  cfg: ParsedConfig
+): boolean {
+  if (!policySvc || !natPort) return false;
+  if (policySvc === "any" || natPort === "any") return true;
+  const polPorts = new Set(serviceToPorts(policySvc, cfg));
+  if (polPorts.has("any")) return true;
+  const natPorts = serviceToPorts(natPort, cfg);
+  for (const p of natPorts) {
+    if (p === "any") return true;
+    if (polPorts.has(p)) return true;
+  }
+  return false;
+}
+
+/** Find permit policies whose dstAddr+service cover this DNAT's translated target. */
+export function findCoveringPolicies(
+  entry: FlowDnatEntry,
+  cfg: ParsedConfig
+): PolicyRule[] {
+  const target = entry.rule.translatedPool;
+  const port = entry.backendPort || "any";
+  return cfg.policies.filter(
+    (p) =>
+      p.action === "permit" &&
+      addrMatches(p.dstAddr, target, cfg) &&
+      svcMatches(p.service, port, cfg)
+  );
+}
+
 export function buildFocusLines(
   flows: Flow[],
   cfg: ParsedConfig
 ): FocusLine[] {
   const out: FocusLine[] = [];
   flows.forEach((f) => {
+    // DNAT-bearing flows: emit one row per exposed (proto/port) by cross-policy coverage.
+    if (f.dnat.length > 0) {
+      const portMap = new Map<
+        string,
+        {
+          proto: string;
+          port: string;
+          service: string;
+          dnats: FlowDnatEntry[];
+          policies: PolicyRule[];
+          seen: Set<string>;
+        }
+      >();
+      f.dnat.forEach((d) => {
+        const ports = d.backendPort
+          ? serviceToPorts(d.backendPort, cfg)
+          : ["any"];
+        const covering = findCoveringPolicies(d, cfg);
+        ports.forEach((p) => {
+          const { proto, port } = parsePortStr(p);
+          const svc = port === "any" ? "any" : `${proto}/${port}`;
+          let g = portMap.get(svc);
+          if (!g) {
+            g = {
+              proto,
+              port,
+              service: svc,
+              dnats: [],
+              policies: [],
+              seen: new Set(),
+            };
+            portMap.set(svc, g);
+          }
+          if (!g.dnats.includes(d)) g.dnats.push(d);
+          covering.forEach((pol) => {
+            const k = `${pol.id}@${pol.lineNo}`;
+            if (!g!.seen.has(k)) {
+              g!.seen.add(k);
+              g!.policies.push(pol);
+            }
+          });
+        });
+      });
+      portMap.forEach((g) => {
+        const associated = g.policies.length > 0;
+        const sorted = g.policies.sort(
+          (a, b) => Number(a.id) - Number(b.id) || a.lineNo - b.lineNo
+        );
+        out.push({
+          key: `${f.key}\t${g.service}\t${associated ? "associated" : "unassociated"}`,
+          src: f.src,
+          dst: f.dst,
+          proto: g.proto,
+          port: g.port,
+          service: g.service,
+          action: associated ? "associated" : "unassociated",
+          policies: sorted,
+          nat: g.dnats,
+          coverageKind: associated ? "ok" : "orphan",
+        });
+      });
+      return;
+    }
+
+    // Pure policy chain (no DNAT) — original permit/deny row emission.
     const groups = new Map<
       string,
       { proto: string; port: string; action: string; policies: PolicyRule[] }
@@ -486,39 +622,10 @@ export function buildFocusLines(
         policies: g.policies.sort(
           (a, b) => Number(a.id) - Number(b.id) || a.lineNo - b.lineNo
         ),
-        nat: pickMatchingDnat(f.dnat, svc, cfg),
+        nat: [],
         coverageKind: f.coverage.kind,
       });
     });
-
-    // Orphan DNAT exposed ports → "none" action lines
-    if (f.dnat.length > 0) {
-      const exposedSet = new Set<string>();
-      f.dnat.forEach((d) => {
-        const ports = d.backendPort
-          ? serviceToPorts(d.backendPort, cfg)
-          : ["any"];
-        ports.forEach((p) => exposedSet.add(p));
-      });
-      const hasAnyPermit = f.permitPorts.has("any");
-      exposedSet.forEach((p) => {
-        if (p === "any") return;
-        if (hasAnyPermit || f.permitPorts.has(p) || f.denyPorts.has(p)) return;
-        const { proto, port } = parsePortStr(p);
-        out.push({
-          key: `${f.key}\t${p}\tnone`,
-          src: f.src,
-          dst: f.dst,
-          proto,
-          port,
-          service: p,
-          action: "none",
-          policies: [],
-          nat: pickMatchingDnat(f.dnat, p, cfg),
-          coverageKind: f.coverage.kind,
-        });
-      });
-    }
   });
   return out;
 }
