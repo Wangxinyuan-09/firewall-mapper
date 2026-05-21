@@ -499,6 +499,21 @@ function addrLeaves(
     return out;
   }
 
+  const pool = cfg.natPools.find((p) => p.name === name);
+  if (pool) {
+    if (pool.addressFrom) {
+      if (pool.addressTo && pool.addressTo !== pool.addressFrom) {
+        out.add(`range:${pool.addressFrom}-${pool.addressTo}`);
+      } else {
+        out.add(`host:${pool.addressFrom}`);
+        findAddressesContainingIp(pool.addressFrom, cfg).forEach((n) =>
+          out.add(`name:${n}`)
+        );
+      }
+    }
+    return out;
+  }
+
   const grp = cfg.addressGroups.find((g) => g.name === name);
   if (grp) {
     grp.members.forEach((m) =>
