@@ -1,75 +1,52 @@
-## 关联判定改造：以「转化后目的+后端端口被 permit 覆盖」为唯一标准
+## 目标
 
-### 现状问题
+统一 NAT 卡片（pill 触发器 + HoverCard 详情）的配色，采用「原始 / 转换 双色对比」方案：
 
-`buildFlows` 用 `(srcAddr, dstAddr)` 字面值聚合 NAT 与策略；`FocusLine` 是按 `(src, dst, proto, port, action)` 拆行。结果：
+- 原始侧（防火墙入口）→ 中性色（slate / foreground / muted）
+- 转换侧（后端目标）→ amber 强调色
+- 所有端口 → 统一弱化为 `text-muted-foreground`，不再使用 sky 蓝
+- 箭头与 NAT/DNAT 标识 → 保留 amber 作为「这是 NAT」的语义锚点
 
-- DNAT `srcAddr=any, translatedPool=api-172.23.51.28` 与策略 `dstAddr=api-svc-group`（组里含该 IP）会落到不同 flow，被误判为「未关联策略」
-- 一切以源/目的名字面值是否相等为前提，与 NAT 的语义（转换为）脱节
+效果：去掉当前 amber + sky + 默认色三色混杂的杂乱感，让用户一眼看出「左边是原始 → 右边是转换后」的方向性。
 
-### 新规则
+## 改动范围
 
-DNAT 是否「已关联策略」只看一件事：转换后的内网目的 + 后端端口，是否被任一 `permit` 策略覆盖。
+只改 `src/routes/access-graph.tsx` 中的 `DnatEntryPill` 组件（约 880–968 行），不动业务逻辑、不动其他组件。
 
-```text
-associated(nat) ⇔ ∃ p ∈ policies,
-    p.action === "permit"
-  ∧ addrMatches(p.dstAddr, nat.translatedPool)
-  ∧ svcMatches(p.service, nat.backendPort)
-```
+### Pill 触发器（行 894–919）
 
-- `addrMatches(A, B)`：A、B 展开后的地址名集合相交，或任一方为 `any`，即匹配
-- `svcMatches(S, port)`：S 展开后的 `proto/port` 集合包含 `port`，或任一方为 `any`，即匹配
-- 源地址（NAT 源 / 策略源）**不参与**判定，只用于主图展示访问面和详情预览
+| 元素 | 当前 | 调整后 |
+|---|---|---|
+| 容器边框/背景 | amber-500/40 + amber-500/10 | 保持（amber 作为 NAT 语义标识）|
+| `DNAT` 文字 | amber-700 | 保持 |
+| 原始 `entryAddr` | 默认 foreground | `text-foreground`（明确）|
+| 原始 `:entryPort` | text-muted-foreground | 保持 |
+| `ArrowRight` | amber-600 | 保持 |
+| 转换 `translatedPool` | amber-700 | 保持 |
+| 转换 `:backendPort` | amber-700/60 | 改为 `text-muted-foreground`（与原始端口对称） |
 
-主图状态只有两种：`已关联策略 · 策略×N` 或 `未关联策略`（不再有 partial / orphan / no-nat 三态混用）。
+### HoverCard 详情（行 943–964）
 
-### 实现
+| 元素 | 当前 | 调整后 |
+|---|---|---|
+| `原始目的` 标签 | text-muted-foreground | 保持 |
+| 原始 `entryAddr` | 默认 | `text-foreground` |
+| 原始 `:entryPort` | sky-700 / sky-300 | `text-muted-foreground` |
+| `转换为` 标签 | amber-700 | 保持 |
+| 转换 `translatedPool` | amber-700 | 保持 |
+| 转换 `:backendPort` | sky-700 / sky-300 | `text-amber-700/70 dark:text-amber-300/70`（跟随转换侧主色，但弱化）|
 
-**1. `src/lib/access.ts`**
+### 不改动
 
-新增工具函数（带 Map 缓存避免 N×M 重复展开）：
+- NAT pill 的整体 amber 边框 / 背景（这是用户识别 NAT 的关键视觉锚）
+- 详情卡的标题区（DNAT #203 / 接口 / disabled badge）
+- 业务逻辑、数据结构、过滤、关联策略判定均不动
 
-```ts
-function addrMatches(policyAddr: string, natTarget: string, cfg): boolean
-function svcMatches(policySvc: string, natPort: string, cfg): boolean
-function findCoveringPolicies(nat: FlowDnatEntry, cfg): PolicyRule[]
-```
+## 验证
 
-调整 `Flow` 与 coverage 计算：
-- `buildFlows` 保留按 `(src, dst)` 聚合（用于主图分组浏览），但**每条 DNAT 项再额外挂一份「跨组覆盖策略列表」**：扫描全量 `cfg.policies`，按上面公式过滤出 permit 策略
-- `coverage.kind` 简化为 `"associated" | "unassociated"`（保留旧字段名以减少波及，但语义按新规则赋值）；旧 `partial / orphan / no-nat` 在 UI 层一律映射到这两个之一
-- `permitPorts/denyPorts` 仍保留用于 service facet，但不再决定主图状态
+改完后在预览中查看 `/access-graph?focus=src&id=财富大厦统一出口`，确认：
 
-改写 `buildFocusLines`：
-- 每条 DNAT 暴露端口生成一行；`action` 字段改为 `"associated"`（带覆盖策略列表）或 `"unassociated"`（空策略列表）
-- 不再依赖 `f.policies` 与 NAT 是否同 `(src,dst)` 桶
-- 纯策略链（无 DNAT 的 flow）保持原样输出，仍按 permit/deny 拆行
-
-修 `filterLinesByFocus`：
-- `src/dst` 焦点改为「展开集合相交即命中」，让用户选具体地址也能看到落在地址组上的行
-- `svc` 焦点用 `serviceToPorts` 比对
-
-**2. `src/routes/access-graph.tsx`**
-
-- `ActionBadge`：`associated` 显示「已关联策略 · 策略×N」（点击弹覆盖策略列表，复用 `RefsPreview`）；`unassociated` 显示「未关联策略」轻样式，hover 文案：「转化后的目的+后端端口没有任何 permit 策略覆盖」
-- 主图行左侧色条：`associated` 走中性色；`unassociated` 走警示色
-- `GroupSummary` 计数改为「DNAT N · 已关联 X · 未关联 Y」
-- 顶部「仅显示异常」筛选改为「仅未关联」
-
-### 不动
-
-- 解析器、路由结构、其它页面不动
-- `ObjectPreview / RefsPreview` 复用
-- 纯策略链（无 DNAT）的展示逻辑不动
-
-### 文件
-
-- `src/lib/access.ts`
-- `src/routes/access-graph.tsx`
-
-### 验收
-
-- DNAT `translatedPool=api-172.23.51.28, backendPort=tcp/8443`，存在策略 `dstAddr=api-svc-group`（组含 172.23.51.28）`service=web-svc`（含 tcp/8443）`action=permit` → 显示「已关联策略 · 策略×1」，弹窗列出该策略
-- 同上 NAT，但全量策略里无任何 permit 覆盖到该 IP+端口 → 显示「未关联策略」
-- Source 焦点选具体 IP，能看到 NAT `srcAddr=any` 的行
+1. Pill 中端口不再喧宾夺主，整体只剩 amber + 中性两色
+2. HoverCard 中「原始目的」一行没有蓝色端口
+3. 「转换为」一行的 IP 和端口色调统一为 amber 系（端口稍弱）
+4. 浅色 / 深色模式对比度都可读

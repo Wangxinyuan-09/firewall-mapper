@@ -909,9 +909,10 @@ function DnatLabel({
       <span className="min-w-0 truncate text-amber-700 dark:text-amber-300">
         {entry.rule.translatedPool}
         {backendPort && backendPort !== entryPort && (
-          <span className="text-amber-700/60 dark:text-amber-300/60">:{backendPort}</span>
+          <span className="text-muted-foreground">:{backendPort}</span>
         )}
       </span>
+
       {entry.rule.disabled && (
         <Badge tone="warn">disabled</Badge>
       )}
@@ -945,10 +946,10 @@ function DnatLabel({
             <span className="w-16 shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
               原始目的
             </span>
-            <span className="break-all">
+            <span className="break-all text-foreground">
               {entry.entryAddr}
               {entryPort && (
-                <span className="text-sky-700 dark:text-sky-300">:{entryPort}</span>
+                <span className="text-muted-foreground">:{entryPort}</span>
               )}
             </span>
           </div>
@@ -958,9 +959,10 @@ function DnatLabel({
             </span>
             <span className="break-all text-amber-700 dark:text-amber-300">
               {entry.rule.translatedPool}
-              {backendPort && <span className="text-sky-700 dark:text-sky-300">:{backendPort}</span>}
+              {backendPort && <span className="text-amber-700/70 dark:text-amber-300/70">:{backendPort}</span>}
             </span>
           </div>
+
 
         </div>
       </HoverCardContent>
