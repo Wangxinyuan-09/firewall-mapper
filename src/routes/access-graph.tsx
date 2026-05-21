@@ -632,9 +632,7 @@ function FocusLineRow({
       </div>
       {/* 2. NAT / direct */}
       <div className="flex min-w-0 items-center gap-1.5">
-        <Connector />
         <NatToken nat={line.nat} />
-        <Connector />
       </div>
       {/* 3. 目的 */}
       <div className="flex min-w-0 items-center">
@@ -658,6 +656,7 @@ function FocusLineRow({
 function Connector() {
   return <span className="h-px w-3 shrink-0 bg-border" />;
 }
+
 
 function Placeholder() {
   return <span className="font-mono text-xs text-muted-foreground/40">—</span>;
@@ -720,7 +719,7 @@ function ActionBadge({ action }: { action: string }) {
   if (action === "none")
     return (
       <span
-        className="inline-flex items-center rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+        className="text-[11px] text-muted-foreground/70"
         title="DNAT 已暴露此端口，但未找到匹配的安全策略（permit/deny 均无）。可能策略缺失，或解析器无法确认覆盖关系。"
       >
         未关联策略
@@ -799,8 +798,12 @@ function NatToken({ nat }: { nat: FlowDnatEntry[] }) {
   const [showFull] = useShowFullPortRange();
   if (nat.length === 0) {
     return (
-      <span className="inline-flex items-center rounded-md border border-dashed border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-        direct
+      <span className="inline-flex items-center gap-1 text-muted-foreground/80">
+        <span className="h-px w-6 bg-foreground/40" />
+        <ArrowRight className="h-3.5 w-3.5 text-foreground/70" strokeWidth={2.5} />
+        <span className="text-[10px] uppercase tracking-wide">direct</span>
+        <ArrowRight className="h-3.5 w-3.5 text-foreground/70" strokeWidth={2.5} />
+        <span className="h-px w-6 bg-foreground/40" />
       </span>
     );
   }
@@ -857,20 +860,19 @@ function DnatLabel({
   const trigger = (
     <span
       className={cn(
-        "inline-flex min-w-0 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] hover:bg-amber-500/15",
-        block && "w-full"
+        "inline-flex min-w-0 max-w-[22rem] items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-mono text-[11px] hover:bg-amber-500/15",
+        block && "w-full max-w-none"
       )}
     >
-      <span className="font-semibold text-amber-700 dark:text-amber-300">
+      <span className="shrink-0 font-semibold text-amber-700 dark:text-amber-300">
         {kind}
       </span>
-      <span className="text-muted-foreground">#{entry.rule.id}</span>
-      <span className="truncate">
+      <span className="min-w-0 truncate">
         {entry.entryAddr}
         {entryPort && <span className="text-muted-foreground">:{entryPort}</span>}
       </span>
       <ArrowRight className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
-      <span className="truncate text-amber-700 dark:text-amber-300">
+      <span className="min-w-0 truncate text-amber-700 dark:text-amber-300">
         {entry.rule.translatedPool}
         {backendPort && <span>:{backendPort}</span>}
       </span>
