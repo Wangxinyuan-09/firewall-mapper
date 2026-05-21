@@ -472,76 +472,95 @@ function collectAddressMembers(
   return out;
 }
 
-/** Expand a name into the set of identifiers it represents:
- *  - `name:<obj-or-group>` for every transitively reachable name
- *  - `<kind>:<value>` (host/net/range/domain/mac) for every literal leaf entry
- *  - If `name` itself is a literal IPv4, include `host:<ip>` plus the names of
- *    every address-object that contains it. */
-function addrLeaves(
+/** Literal endpoint extracted from an address/group/pool/IP-literal. */
+type AddrEndpoint =
+  | { kind: "host"; value: string }
+  | { kind: "net"; value: string }
+  | { kind: "range"; value: string }
+  | { kind: "domain"; value: string }
+  | { kind: "mac"; value: string };
+
+/** Recursively expand a name into its literal endpoints.
+ *  Names are only used as expansion paths — matching is done on literal
+ *  values (IP / CIDR / range / domain / mac), never on shared name strings.
+ *  Returns [] for unresolved names. */
+function addrEndpoints(
   name: string,
   cfg: ParsedConfig,
   seen: Set<string> = new Set()
-): Set<string> {
-  const out = new Set<string>();
-  if (seen.has(name)) return out;
+): AddrEndpoint[] {
+  if (!name || seen.has(name)) return [];
   seen.add(name);
-  out.add(`name:${name}`);
 
   if (isIpLiteral(name)) {
-    out.add(`host:${name}`);
-    findAddressesContainingIp(name, cfg).forEach((n) => out.add(`name:${n}`));
-    return out;
+    return CIDR.test(name)
+      ? [{ kind: "net", value: name }]
+      : [{ kind: "host", value: name }];
   }
 
   const obj = cfg.addresses.find((a) => a.name === name);
   if (obj) {
-    obj.entries.forEach((e) => out.add(`${e.kind}:${e.value}`));
-    return out;
+    return obj.entries.map((e) => ({ kind: e.kind, value: e.value })) as AddrEndpoint[];
   }
 
   const pool = cfg.natPools.find((p) => p.name === name);
-  if (pool) {
-    if (pool.addressFrom) {
-      if (pool.addressTo && pool.addressTo !== pool.addressFrom) {
-        out.add(`range:${pool.addressFrom}-${pool.addressTo}`);
-      } else {
-        out.add(`host:${pool.addressFrom}`);
-        findAddressesContainingIp(pool.addressFrom, cfg).forEach((n) =>
-          out.add(`name:${n}`)
-        );
-      }
+  if (pool && pool.addressFrom) {
+    if (pool.addressTo && pool.addressTo !== pool.addressFrom) {
+      return [{ kind: "range", value: `${pool.addressFrom}-${pool.addressTo}` }];
     }
-    return out;
+    return [{ kind: "host", value: pool.addressFrom }];
   }
 
   const grp = cfg.addressGroups.find((g) => g.name === name);
   if (grp) {
+    const out: AddrEndpoint[] = [];
     grp.members.forEach((m) =>
-      addrLeaves(m, cfg, seen).forEach((x) => out.add(x))
+      addrEndpoints(m, cfg, seen).forEach((e) => out.push(e))
     );
+    return out;
   }
-  return out;
+
+  return [];
 }
 
-function pickHosts(s: Set<string>): string[] {
-  const out: string[] = [];
-  s.forEach((v) => {
-    if (v.startsWith("host:")) out.push(v.slice(5));
-  });
-  return out;
-}
-
-function anyHostInside(hosts: string[], other: Set<string>): boolean {
-  for (const ip of hosts) {
-    for (const v of other) {
-      if (v.startsWith("net:") && inCidr(ip, v.slice(4))) return true;
-      if (v.startsWith("range:") && inRange(ip, v.slice(6))) return true;
-    }
+/** Numeric [start,end] range for an IP-bearing endpoint. */
+function endpointIpRange(e: AddrEndpoint): [number, number] | null {
+  if (e.kind === "host") {
+    const i = ipToInt(e.value);
+    return i == null ? null : [i, i];
   }
-  return false;
+  if (e.kind === "net") {
+    const m = e.value.match(CIDR);
+    if (!m) return null;
+    const base = ipToInt(m.slice(1, 5).join("."));
+    const bits = Number(m[5]);
+    if (base == null || bits < 0 || bits > 32) return null;
+    if (bits === 0) return [0, 0xffffffff];
+    const mask = (~0 << (32 - bits)) >>> 0;
+    const start = (base & mask) >>> 0;
+    const end = (start | ((~mask) >>> 0)) >>> 0;
+    return [start, end];
+  }
+  if (e.kind === "range") {
+    const [a, b] = e.value.split("-").map((s) => s.trim());
+    const ai = ipToInt(a);
+    const bi = ipToInt(b);
+    if (ai == null || bi == null) return null;
+    return [Math.min(ai, bi), Math.max(ai, bi)];
+  }
+  return null;
 }
 
-/** True if A and B address sets overlap (by name, literal endpoint, or host∈net/range), or either side is "any". */
+function rangesOverlap(x: [number, number], y: [number, number]): boolean {
+  return x[0] <= y[1] && y[0] <= x[1];
+}
+
+/** True iff A and B have real overlap.
+ *  - `any` on either side matches everything.
+ *  - Identical name strings match.
+ *  - Otherwise both sides are expanded to literal endpoints and must overlap
+ *    on IP range / domain value / MAC value. No "shared name" shortcut —
+ *    if both sides resolve to disjoint IPs, they DO NOT match. */
 export function addrMatches(
   a: string,
   b: string,
@@ -550,11 +569,28 @@ export function addrMatches(
   if (!a || !b) return false;
   if (a === "any" || b === "any") return true;
   if (a === b) return true;
-  const A = addrLeaves(a, cfg);
-  const B = addrLeaves(b, cfg);
-  for (const x of A) if (B.has(x)) return true;
-  if (anyHostInside(pickHosts(A), B)) return true;
-  if (anyHostInside(pickHosts(B), A)) return true;
+
+  const A = addrEndpoints(a, cfg);
+  const B = addrEndpoints(b, cfg);
+  if (A.length === 0 || B.length === 0) return false;
+
+  // domain / mac: exact value match
+  for (const ea of A) {
+    if (ea.kind !== "domain" && ea.kind !== "mac") continue;
+    for (const eb of B) {
+      if (eb.kind === ea.kind && eb.value === ea.value) return true;
+    }
+  }
+
+  // IP-bearing endpoints: numeric range overlap (real containment)
+  const aR = A.map(endpointIpRange).filter(
+    (r): r is [number, number] => r !== null
+  );
+  const bR = B.map(endpointIpRange).filter(
+    (r): r is [number, number] => r !== null
+  );
+  for (const x of aR) for (const y of bR) if (rangesOverlap(x, y)) return true;
+
   return false;
 }
 
