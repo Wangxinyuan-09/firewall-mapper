@@ -411,24 +411,57 @@ function SrcFocusView({ src, lines }: { src: string; lines: FocusLine[] }) {
       <FocusHeader anchor={{ name: src, role: "src" }} count={lines.length} />
       {[...byDst.entries()].map(([dst, rows]) => (
         <FocusCard key={dst}>
-          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>目的</span>
             <NodeChip name={dst} role="dst" />
-            <span className="text-[10px]">{rows.length} 条</span>
+            <GroupSummary rows={rows} />
           </div>
           <div className="space-y-1.5">
             {sortRows(rows).map((l) => (
-              <FocusLineRow
-                key={l.key}
-                line={l}
-                hideSrc={false}
-                hideDst
-              />
+              <FocusLineRow key={l.key} line={l} hideSrc={false} />
             ))}
           </div>
         </FocusCard>
       ))}
     </div>
+  );
+}
+
+function GroupSummary({ rows }: { rows: FocusLine[] }) {
+  const total = rows.length;
+  const natRows = rows.filter((r) => r.nat.length > 0).length;
+  const permitRows = rows.filter((r) => r.action === "permit").length;
+  const denyRows = rows.filter((r) => r.action === "deny").length;
+  const missingRows = rows.filter((r) => r.action === "none").length;
+  return (
+    <span className="ml-auto flex flex-wrap items-center gap-1.5 text-[10px]">
+      <span className="rounded bg-secondary/60 px-1.5 py-0.5">
+        {total} 条
+      </span>
+      {natRows > 0 && (
+        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
+          NAT {natRows}
+        </span>
+      )}
+      {permitRows > 0 && (
+        <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300">
+          permit {permitRows}
+        </span>
+      )}
+      {denyRows > 0 && (
+        <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive">
+          deny {denyRows}
+        </span>
+      )}
+      {missingRows > 0 && (
+        <span
+          className="rounded border border-amber-500/60 bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-700 dark:text-amber-300"
+          title="DNAT 暴露但未找到匹配安全策略的行数"
+        >
+          策略缺失 {missingRows}
+        </span>
+      )}
+    </span>
   );
 }
 
