@@ -238,6 +238,9 @@ export function findAddressesContainingIp(
   cfg: ParsedConfig
 ): string[] {
   if (!IPV4.test(ip)) return [];
+  const cache = idx(cfg).addrContainsIp;
+  const cached = cache.get(ip);
+  if (cached) return cached;
   const hits: string[] = [];
   cfg.addresses.forEach((a) => {
     const ok = a.entries.some((e) => {
@@ -248,6 +251,7 @@ export function findAddressesContainingIp(
     });
     if (ok) hits.push(a.name);
   });
+  cache.set(ip, hits);
   return hits;
 }
 
