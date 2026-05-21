@@ -624,7 +624,7 @@ function FocusLineRow({
       )}
     >
       <div className="flex min-w-0 items-center">
-        {!hideSrc ? <NodeChip name={line.src} role="src" /> : <Placeholder />}
+        {!hideSrc ? <NodePlain name={line.src} /> : <Placeholder />}
       </div>
       <div className="flex min-w-0 items-center gap-1.5">
         <NatToken nat={line.nat} />
@@ -633,14 +633,11 @@ function FocusLineRow({
         {hideDst ? (
           <Placeholder />
         ) : mutedDst ? (
-          <span
-            className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70"
-            title={line.dst}
-          >
-            {line.dst}
+          <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70">
+            <ObjectName name={line.dst} />
           </span>
         ) : (
-          <NodeChip name={line.dst} role="dst" />
+          <NodePlain name={line.dst} />
         )}
       </div>
       <div className="flex min-w-0 items-center pl-1">
@@ -675,12 +672,33 @@ function NodeChip({
   role: "src" | "dst";
 }) {
   const cat = classifyIntermediary(name);
+  const cls =
+    role === "src"
+      ? "border-emerald-500/40 bg-emerald-500/10"
+      : "border-blue-500/40 bg-blue-500/10";
   return (
     <span
       className={cn(
-        "inline-flex min-w-0 items-center gap-1.5 rounded border border-border/60 px-1.5 py-0.5 font-mono text-xs text-foreground/90"
+        "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs",
+        cls
       )}
     >
+      <span className="min-w-0 truncate">
+        <ObjectName name={name} />
+      </span>
+      {cat && (
+        <span className="shrink-0 rounded bg-background/60 px-1 text-[10px] uppercase text-muted-foreground">
+          {CAT_LABEL[cat]}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function NodePlain({ name }: { name: string }) {
+  const cat = classifyIntermediary(name);
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5 font-mono text-xs text-foreground/90">
       <span className="min-w-0 truncate">
         <ObjectName name={name} />
       </span>
