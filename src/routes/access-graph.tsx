@@ -634,10 +634,10 @@ function FocusLineRow({
           <Placeholder />
         ) : mutedDst ? (
           <span
-            className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/60"
+            className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70"
             title={line.dst}
           >
-            ↳ 同上
+            {line.dst}
           </span>
         ) : (
           <NodeChip name={line.dst} role="dst" />
