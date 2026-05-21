@@ -1,40 +1,61 @@
 ## 目标
 
-按用户指示重新分配 NAT 详情卡的颜色层级，让「转换为」一侧成为视觉重点，原始侧整体弱化但两侧端口保持同色，便于自然对齐对比。
+让 DNAT 关联策略匹配把「来源」也算进去。当前公式只看 dst + service，导致即便策略源完全不覆盖该流的源，也被算作「已关联」。
 
-## 改动范围
+## 新匹配公式
 
-仅修改 `src/routes/access-graph.tsx` 中 `DnatEntryPill` 的 HoverCard 详情部分（行 943–964）。Pill 触发器与业务逻辑不动。
+```
+candidate = policy.action === "permit"
+         && addrMatches(policy.srcAddr, flow.src)
+         && addrMatches(policy.dstAddr, nat.translatedPool)
+         && svcMatches(policy.service, nat.backendPort)
+```
 
-### 详情卡颜色重排
+- `any` 仍然视为通配匹配（包括 src=any、dst=any、service=any 的策略，都按命中处理）
+- 不引入「至少 1 个精准非 any」的额外约束 — 用户已确认 all-any 也计数
+- 不改任何 UI / 样式 / 计数文案
 
-| 元素 | 当前 | 调整后 |
-|---|---|---|
-| 标签 `原始目的` | `text-muted-foreground` | `text-foreground`（正常黑色字） |
-| 原始 `entryAddr` IP | `text-foreground` | `text-muted-foreground`（弱化） |
-| 原始 `:entryPort` | `text-muted-foreground` | `text-amber-700/70 dark:text-amber-300/70`（与转换后端口同色） |
-| 标签 `转换为` | `text-amber-700 dark:text-amber-400` | 保持 |
-| 转换 `translatedPool` IP | `text-amber-700 dark:text-amber-300` | 保持 |
-| 转换 `:backendPort` | `text-amber-700/70 dark:text-amber-300/70` | 保持 |
+## 改动
 
-### 设计逻辑
+`src/lib/access.ts`
 
-- 两个标签（原始目的 / 转换为）使用各自侧的「主」色：原始侧黑、转换侧 amber → 标签是入口，需要明显。
-- 原始 IP 用 muted 弱化 → 它只是上下文，不是重点；用户主要关心「转换到哪里」。
-- 两侧端口统一 amber/70 → 端口在 NAT 场景里通常前后一致，使用相同的弱 amber 让眼睛快速判定「端口是否变化」：颜色不变 → 端口是 NAT 链路的一部分；如果两边数字相同则一目了然。
-- 转换侧 IP + port 都是 amber，强化「这是最终落点」。
+### 1. `findCoveringPolicies`（约 511–523 行）
 
-### 不改动
+加一个 `flowSrc` 参数，过滤条件追加 `addrMatches(p.srcAddr, flowSrc, cfg)`：
 
-- Pill 触发器
-- 详情卡标题区（DNAT #203 / 接口 / disabled）
-- 业务逻辑
+```ts
+export function findCoveringPolicies(
+  entry: FlowDnatEntry,
+  flowSrc: string,
+  cfg: ParsedConfig
+): PolicyRule[] {
+  const target = entry.rule.translatedPool;
+  const port = entry.backendPort || "any";
+  return cfg.policies.filter(
+    (p) =>
+      p.action === "permit" &&
+      addrMatches(p.srcAddr, flowSrc, cfg) &&
+      addrMatches(p.dstAddr, target, cfg) &&
+      svcMatches(p.service, port, cfg)
+  );
+}
+```
+
+### 2. `buildFocusLines`（约 548 行的调用点）
+
+把 `f.src` 透传过去：
+
+```ts
+const covering = findCoveringPolicies(d, f.src, cfg);
+```
+
+### 3. 其他调用点
+
+搜 `findCoveringPolicies(` 的所有调用，全部补上 `flowSrc`。如果有调用方暂时不知道源（例如纯按 DNAT 规则维度的列表），传 `"any"` 保持原行为。
 
 ## 验证
 
-预览 `/access-graph?focus=src&id=财富大厦统一出口` 的 DNAT 详情卡：
-
-1. 「原始目的」标签是正常黑字，但右侧 IP 是灰色弱化
-2. 两侧端口数字颜色完全一致（amber/70）
-3. 「转换为」整行 amber 突出
-4. 浅色 / 深色模式都可读
+- `/access-graph?focus=src&id=财富大厦统一出口`：检查 DNAT 卡片的「已关联策略 · 策略×N」中 N 是否减少了那些「策略源完全不包含财富大厦」的条目；点开策略弹出窗确认每条策略的源都覆盖该流。
+- 切换到 `/access-graph?focus=dst`：同一 DNAT 在不同 src 下的关联策略数应能不同。
+- 没有源约束的 NAT（policy src=any）应仍然出现在结果里。
+- Typecheck 全绿，所有 `findCoveringPolicies` 调用点都补全了第二个参数。

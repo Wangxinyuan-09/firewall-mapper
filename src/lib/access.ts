@@ -507,20 +507,24 @@ export function svcMatches(
   return false;
 }
 
-/** Find permit policies whose dstAddr+service cover this DNAT's translated target. */
+/** Find permit policies whose src+dst+service cover this DNAT under the given flow source. */
 export function findCoveringPolicies(
   entry: FlowDnatEntry,
+  flowSrc: string,
   cfg: ParsedConfig
 ): PolicyRule[] {
   const target = entry.rule.translatedPool;
   const port = entry.backendPort || "any";
+  const src = flowSrc || "any";
   return cfg.policies.filter(
     (p) =>
       p.action === "permit" &&
+      addrMatches(p.srcAddr, src, cfg) &&
       addrMatches(p.dstAddr, target, cfg) &&
       svcMatches(p.service, port, cfg)
   );
 }
+
 
 export function buildFocusLines(
   flows: Flow[],
@@ -545,7 +549,7 @@ export function buildFocusLines(
         const ports = d.backendPort
           ? serviceToPorts(d.backendPort, cfg)
           : ["any"];
-        const covering = findCoveringPolicies(d, cfg);
+        const covering = findCoveringPolicies(d, f.src, cfg);
         ports.forEach((p) => {
           const { proto, port } = parsePortStr(p);
           const svc = port === "any" ? "any" : `${proto}/${port}`;
