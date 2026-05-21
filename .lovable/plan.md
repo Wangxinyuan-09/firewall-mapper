@@ -1,89 +1,75 @@
-## 路径分析改版：三入口 + 横向 Focus Graph
+## 关联判定改造：以「转化后目的+后端端口被 permit 覆盖」为唯一标准
 
-把现有「全部 src→dst 流卡片瀑布流」改为 **顶部三 Tab 入口 + 顶部单选 + 下方横向 Focus Graph** 的工作台结构。
+### 现状问题
 
-### 页面布局
+`buildFlows` 用 `(srcAddr, dstAddr)` 字面值聚合 NAT 与策略；`FocusLine` 是按 `(src, dst, proto, port, action)` 拆行。结果：
 
-```text
-┌────────────────────────────────────────────────────────────┐
-│ [Source] [Destination] [Service]   ← Tab 切入口            │
-│ ┌────────────────────────────────┐  ┌───────────────────┐ │
-│ │ 选择 财务大厦统一出口      ▼   │  │ direct/DNAT 等过滤 │ │
-│ └────────────────────────────────┘  └───────────────────┘ │
-├────────────────────────────────────────────────────────────┤
-│                                                            │
-│              横向 Focus Graph 主区域                       │
-│                                                            │
-└────────────────────────────────────────────────────────────┘
-```
+- DNAT `srcAddr=any, translatedPool=api-172.23.51.28` 与策略 `dstAddr=api-svc-group`（组里含该 IP）会落到不同 flow，被误判为「未关联策略」
+- 一切以源/目的名字面值是否相等为前提，与 NAT 的语义（转换为）脱节
 
-- 顶部 Tab 决定入口类型；下方一个搜索/选择 popover 列出该入口的所有候选对象（按命中流条数排序，any 与超阈值对象折叠到末尾）。
-- 选中后下方画 Focus Graph，未选时显示空态提示 + 列推荐对象。
-- 横向空间最大化，移动端纵向堆叠（Tab 在最上，选择器其次）。
+### 新规则
 
-### 路由参数
-
-- 用 `?focus=src|dst|svc&id=<name>` 单一上下文，替代当前 `?src=/?dst=/?svc=` 三独立 param。
-- 旧链接首次进入时自动映射到新参数后再 `replace`，保持兼容。
-
-### 横向主线（FlowGroup 行）
-
-**聚合主键**：`src + dst + protocol + dstPort + action`，一行一个 FlowGroup。布局：
+DNAT 是否「已关联策略」只看一件事：转换后的内网目的 + 后端端口，是否被任一 `permit` 策略覆盖。
 
 ```text
-[来源 chip] ─[ direct | DNAT #3 公网EIP:443 → 转换为 172.23.51.8:8443 | SNAT #… | NAT×N ]─> [目的 chip[WAF]] ── tcp/8443 permit · 策略×3
+associated(nat) ⇔ ∃ p ∈ policies,
+    p.action === "permit"
+  ∧ addrMatches(p.dstAddr, nat.translatedPool)
+  ∧ svcMatches(p.service, nat.backendPort)
 ```
 
-- **链路段**：纯 CSS 水平连线 + 中间 token。
-  - `direct` → 灰色细标签
-  - 单 DNAT → `DNAT #id 原始目的:端口 → 转换为 内网IP:端口`，"转换为"加重 + amber 箭头
-  - 单 SNAT → `SNAT #id …`
-  - 多 NAT → 折叠为 `NAT×N`，hover/click popover 展开
-- **端点 chip**：源/目的对象名 + 分类小标签（WAF/网关/堡垒/LB），点击 → `ObjectPreview` 弹窗
-- **服务/动作段**：`tcp/8443`（绿/红着色）+ `permit`/`deny` + `策略×N` 徽章；点击 → 策略列表 popover（复用 `RefsPreview`）
-- **异常着色**：orphan/partial/deny 行左侧 4px 色条（黄/橙/红），不单独分区
+- `addrMatches(A, B)`：A、B 展开后的地址名集合相交，或任一方为 `any`，即匹配
+- `svcMatches(S, port)`：S 展开后的 `proto/port` 集合包含 `port`，或任一方为 `any`，即匹配
+- 源地址（NAT 源 / 策略源）**不参与**判定，只用于主图展示访问面和详情预览
 
-### 三入口主线差异
+主图状态只有两种：`已关联策略 · 策略×N` 或 `未关联策略`（不再有 partial / orphan / no-nat 三态混用）。
 
-1. **Source 入口** — 选中 src，列出该 src 出发的所有 FlowGroup，按 dst 二级分组（同一 dst 内多端口堆叠成子行，端点 chip 合并不重复画）。
-2. **Destination 入口** — 选中 dst，多来源「左侧汇聚」：多条左侧主线 → 同一 dst chip → 右侧端口栏纵向堆叠；
-   ```text
-   src1 ─[DNAT…]─┐
-   src2 ─direct──┤── [dst chip] ── port pill 列
-   src3 ─direct──┘
-   ```
-3. **Service 入口** — 选中 `proto/port`，列出所有命中该端口的 FlowGroup（src ─ link ─ dst · action · 策略×N），按 dst 二级分组。
+### 实现
 
-三种入口共用同一 `FocusLineRow` 行组件，差异在外层 grouping 与是否合并端点。
+**1. `src/lib/access.ts`**
 
-### 折叠/阈值规则
+新增工具函数（带 Map 缓存避免 N×M 重复展开）：
 
-- 单个端点的 FlowGroup 数 > 12 → 默认折叠「展开更多 (N)」
-- 含 `any` 的 src/dst/svc，列表中独立放到末尾，默认折叠
-- 不展开 address-group / service-group 成员、不展开完整策略字段，全部走点击 → 现有预览组件
+```ts
+function addrMatches(policyAddr: string, natTarget: string, cfg): boolean
+function svcMatches(policySvc: string, natPort: string, cfg): boolean
+function findCoveringPolicies(nat: FlowDnatEntry, cfg): PolicyRule[]
+```
 
-### 文件改动
+调整 `Flow` 与 coverage 计算：
+- `buildFlows` 保留按 `(src, dst)` 聚合（用于主图分组浏览），但**每条 DNAT 项再额外挂一份「跨组覆盖策略列表」**：扫描全量 `cfg.policies`，按上面公式过滤出 permit 策略
+- `coverage.kind` 简化为 `"associated" | "unassociated"`（保留旧字段名以减少波及，但语义按新规则赋值）；旧 `partial / orphan / no-nat` 在 UI 层一律映射到这两个之一
+- `permitPorts/denyPorts` 仍保留用于 service facet，但不再决定主图状态
 
-- `src/lib/access.ts`：新增 `groupByFocus(flows, focus, id)` → `FocusLine[]` 与 `FocusLine` 类型 `{ src, dst, link: NatChain | 'direct', port, action, policyCount, dnatRefs, policyRefs, coverageKind }`，按主键 `src+dst+proto+port+action` 拆分聚合；保留旧 API。
-- `src/routes/access-graph.tsx`：删除当前 `FlowCard / Bracket / HLine / DnatNode / PortPill` 等原子；新增：
-  - `<FocusTabs>` 顶部三 Tab + 顶部 `<FocusPicker>` 单选 popover
-  - `<FocusGraph>` 主区域，根据 focus 派发到子组件
-  - `<FocusLineRow>` 单行主线
-  - `<NatToken>` direct / DNAT / SNAT / NAT×N 渲染 + popover
-  - `<MultiSourceFanIn>` Destination 入口的左侧汇聚画法
-  - 处理 `?focus&id` 路由参数 + 旧参数迁移
-- `.lovable/plan.md`：替换为本计划
+改写 `buildFocusLines`：
+- 每条 DNAT 暴露端口生成一行；`action` 字段改为 `"associated"`（带覆盖策略列表）或 `"unassociated"`（空策略列表）
+- 不再依赖 `f.policies` 与 NAT 是否同 `(src,dst)` 桶
+- 纯策略链（无 DNAT 的 flow）保持原样输出，仍按 permit/deny 拆行
 
-### 不变
+修 `filterLinesByFocus`：
+- `src/dst` 焦点改为「展开集合相交即命中」，让用户选具体地址也能看到落在地址组上的行
+- `svc` 焦点用 `serviceToPorts` 比对
 
-- 顶部 chip / literal IP 提示逻辑保留
-- `buildFlows / filterFlows / facetFor / sortFlows` 不动
+**2. `src/routes/access-graph.tsx`**
+
+- `ActionBadge`：`associated` 显示「已关联策略 · 策略×N」（点击弹覆盖策略列表，复用 `RefsPreview`）；`unassociated` 显示「未关联策略」轻样式，hover 文案：「转化后的目的+后端端口没有任何 permit 策略覆盖」
+- 主图行左侧色条：`associated` 走中性色；`unassociated` 走警示色
+- `GroupSummary` 计数改为「DNAT N · 已关联 X · 未关联 Y」
+- 顶部「仅显示异常」筛选改为「仅未关联」
+
+### 不动
+
+- 解析器、路由结构、其它页面不动
 - `ObjectPreview / RefsPreview` 复用
-- 其它页面、解析器、路由结构不动
+- 纯策略链（无 DNAT）的展示逻辑不动
 
-### 不做
+### 文件
 
-- 不引入图形库 / SVG / Canvas，全部 flex + `h-px` 连线 + 绝对定位竖向 trunk
-- 不实现拖拽 / 缩放 / 自动布局
-- 不改解析器、不改数据模型、不改其它页面
-- 不展开 address-group / service-group / 策略全文 / 原始配置
+- `src/lib/access.ts`
+- `src/routes/access-graph.tsx`
+
+### 验收
+
+- DNAT `translatedPool=api-172.23.51.28, backendPort=tcp/8443`，存在策略 `dstAddr=api-svc-group`（组含 172.23.51.28）`service=web-svc`（含 tcp/8443）`action=permit` → 显示「已关联策略 · 策略×1」，弹窗列出该策略
+- 同上 NAT，但全量策略里无任何 permit 覆盖到该 IP+端口 → 显示「未关联策略」
+- Source 焦点选具体 IP，能看到 NAT `srcAddr=any` 的行
