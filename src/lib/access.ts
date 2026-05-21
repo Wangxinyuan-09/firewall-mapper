@@ -472,6 +472,24 @@ function collectAddressMembers(
   return out;
 }
 
+/** Expand a name into the set of identifiers (object/group names) it represents.
+ * If `name` is a literal IPv4, also include every address-object containing it
+ * plus any group transitively containing those objects. */
+function addrIdentity(name: string, cfg: ParsedConfig): Set<string> {
+  const out = new Set<string>();
+  collectAddressMembers(name, cfg).forEach((x) => out.add(x));
+  if (isIpLiteral(name)) {
+    const objs = findAddressesContainingIp(name, cfg);
+    objs.forEach((objName) => {
+      collectAddressMembers(objName, cfg).forEach((x) => out.add(x));
+      cfg.addressGroups.forEach((g) => {
+        if (collectAddressMembers(g.name, cfg).has(objName)) out.add(g.name);
+      });
+    });
+  }
+  return out;
+}
+
 /** True if A and B address sets overlap, or either side is "any". */
 export function addrMatches(
   a: string,
@@ -481,13 +499,14 @@ export function addrMatches(
   if (!a || !b) return false;
   if (a === "any" || b === "any") return true;
   if (a === b) return true;
-  const A = collectAddressMembers(a, cfg);
+  const A = addrIdentity(a, cfg);
   if (A.has(b)) return true;
-  const B = collectAddressMembers(b, cfg);
+  const B = addrIdentity(b, cfg);
   if (B.has(a)) return true;
   for (const x of A) if (B.has(x)) return true;
   return false;
 }
+
 
 /** True if policy service covers natPort (proto/port literal), or either is "any". */
 export function svcMatches(
