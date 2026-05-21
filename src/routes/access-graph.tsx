@@ -36,8 +36,8 @@ import {
   Layers,
 } from "lucide-react";
 import {
-  buildFlows,
-  buildFocusLines,
+  getFlows,
+  getFocusLines,
   classifyIntermediary,
   CAT_LABEL,
   focusCandidates,
@@ -132,10 +132,9 @@ function AccessGraphPage() {
     });
   };
 
-  const allFlows = useMemo(() => (cfg ? buildFlows(cfg) : []), [cfg]);
   const allLines = useMemo(
-    () => (cfg ? buildFocusLines(allFlows, cfg) : []),
-    [allFlows, cfg]
+    () => (cfg ? getFocusLines(cfg) : []),
+    [cfg]
   );
   const candidates = useMemo(
     () => focusCandidates(allLines, focus),

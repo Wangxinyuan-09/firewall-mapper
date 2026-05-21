@@ -1,4 +1,13 @@
-import type { ParsedConfig, NatRule, PolicyRule } from "./parser/types";
+import type {
+  ParsedConfig,
+  NatRule,
+  PolicyRule,
+  AddressObject,
+  AddressGroup,
+  NatPool,
+  ServiceObject,
+  ServiceGroup,
+} from "./parser/types";
 
 export type IntermediaryCat = "waf" | "gateway" | "proxy" | "bastion" | "lb";
 
@@ -9,6 +18,73 @@ export const CAT_LABEL: Record<IntermediaryCat, string> = {
   bastion: "堡垒机",
   lb: "负载均衡",
 };
+
+// ---------- per-cfg index + memo caches ----------
+// All hot helpers below resolve names via Maps and memoize recursive results
+// keyed on the immutable ParsedConfig instance. This turns repeated O(N) array
+// .find() calls into O(1) Map lookups and avoids re-expanding the same name
+// across every policy × NAT × line iteration. Forward type references below
+// (AddrEndpoint / Flow / FocusLine / NodeAggregate) are declared later in the
+// same module; TS hoists interface/type declarations.
+
+interface AccessIndex {
+  addrByName: Map<string, AddressObject>;
+  grpByName: Map<string, AddressGroup>;
+  poolByName: Map<string, NatPool>;
+  svcByName: Map<string, ServiceObject>;
+  svcGrpByName: Map<string, ServiceGroup>;
+  endpoints: Map<string, AddrEndpoint[]>;
+  service: Map<string, string[]>;
+  members: Map<string, Set<string>>;
+  expandAddr: Map<string, Set<string>>;
+  expandSvc: Map<string, Set<string>>;
+  addrContainsIp: Map<string, string[]>;
+  flows?: Flow[];
+  focusLines?: FocusLine[];
+  nodeAggregates?: NodeAggregate[];
+}
+
+const indexCache = new WeakMap<ParsedConfig, AccessIndex>();
+
+function idx(cfg: ParsedConfig): AccessIndex {
+  let v = indexCache.get(cfg);
+  if (v) return v;
+  v = {
+    addrByName: new Map(cfg.addresses.map((a) => [a.name, a])),
+    grpByName: new Map(cfg.addressGroups.map((g) => [g.name, g])),
+    poolByName: new Map(cfg.natPools.map((p) => [p.name, p])),
+    svcByName: new Map(cfg.services.map((s) => [s.name, s])),
+    svcGrpByName: new Map(cfg.serviceGroups.map((g) => [g.name, g])),
+    endpoints: new Map(),
+    service: new Map(),
+    members: new Map(),
+    expandAddr: new Map(),
+    expandSvc: new Map(),
+    addrContainsIp: new Map(),
+  };
+  indexCache.set(cfg, v);
+  return v;
+}
+
+/** Cached top-level flow + focus-line builders so navigating away and back
+ *  does not re-run buildFlows / buildFocusLines from scratch. */
+export function getFlows(cfg: ParsedConfig): Flow[] {
+  const i = idx(cfg);
+  if (!i.flows) i.flows = buildFlows(cfg);
+  return i.flows;
+}
+
+export function getFocusLines(cfg: ParsedConfig): FocusLine[] {
+  const i = idx(cfg);
+  if (!i.focusLines) i.focusLines = buildFocusLines(getFlows(cfg), cfg);
+  return i.focusLines;
+}
+
+export function getNodeAggregates(cfg: ParsedConfig): NodeAggregate[] {
+  const i = idx(cfg);
+  if (!i.nodeAggregates) i.nodeAggregates = buildNodeAggregates(cfg);
+  return i.nodeAggregates;
+}
 
 export function classifyIntermediary(name: string): IntermediaryCat | undefined {
   const lower = name.toLowerCase();
@@ -32,22 +108,46 @@ export function expandAddressNames(
   name: string,
   cfg: ParsedConfig
 ): Set<string> {
+  if (name === "any") return new Set(["any"]);
+  const cache = idx(cfg).expandAddr;
+  const cached = cache.get(name);
+  if (cached) return cached;
+  // Build a reverse "member -> containing-group" index lazily once per cfg
+  // (stored inside expandAddr under a sentinel key) to avoid scanning all
+  // groups on every iteration.
   const out = new Set<string>([name]);
-  if (name === "any") return out;
+  const reverse = getReverseAddrGroupIndex(cfg);
   const stack = [name];
   const seen = new Set<string>();
   while (stack.length) {
     const cur = stack.pop()!;
-    cfg.addressGroups.forEach((g) => {
-      if (seen.has(g.name)) return;
-      if (g.members.includes(cur)) {
-        seen.add(g.name);
-        out.add(g.name);
-        stack.push(g.name);
-      }
+    const parents = reverse.get(cur);
+    if (!parents) continue;
+    parents.forEach((p) => {
+      if (seen.has(p)) return;
+      seen.add(p);
+      out.add(p);
+      stack.push(p);
     });
   }
+  cache.set(name, out);
   return out;
+}
+
+const addrReverseCache = new WeakMap<ParsedConfig, Map<string, string[]>>();
+function getReverseAddrGroupIndex(cfg: ParsedConfig): Map<string, string[]> {
+  let m = addrReverseCache.get(cfg);
+  if (m) return m;
+  m = new Map();
+  cfg.addressGroups.forEach((g) => {
+    g.members.forEach((mem) => {
+      const cur = m!.get(mem);
+      if (cur) cur.push(g.name);
+      else m!.set(mem, [g.name]);
+    });
+  });
+  addrReverseCache.set(cfg, m);
+  return m;
 }
 
 /** Expand a service name to itself + any service-group transitively containing it. */
@@ -55,22 +155,43 @@ export function expandServiceNames(
   name: string,
   cfg: ParsedConfig
 ): Set<string> {
+  if (name === "any") return new Set(["any"]);
+  const cache = idx(cfg).expandSvc;
+  const cached = cache.get(name);
+  if (cached) return cached;
   const out = new Set<string>([name]);
-  if (name === "any") return out;
+  const reverse = getReverseSvcGroupIndex(cfg);
   const stack = [name];
   const seen = new Set<string>();
   while (stack.length) {
     const cur = stack.pop()!;
-    cfg.serviceGroups.forEach((g) => {
-      if (seen.has(g.name)) return;
-      if (g.members.includes(cur)) {
-        seen.add(g.name);
-        out.add(g.name);
-        stack.push(g.name);
-      }
+    const parents = reverse.get(cur);
+    if (!parents) continue;
+    parents.forEach((p) => {
+      if (seen.has(p)) return;
+      seen.add(p);
+      out.add(p);
+      stack.push(p);
     });
   }
+  cache.set(name, out);
   return out;
+}
+
+const svcReverseCache = new WeakMap<ParsedConfig, Map<string, string[]>>();
+function getReverseSvcGroupIndex(cfg: ParsedConfig): Map<string, string[]> {
+  let m = svcReverseCache.get(cfg);
+  if (m) return m;
+  m = new Map();
+  cfg.serviceGroups.forEach((g) => {
+    g.members.forEach((mem) => {
+      const cur = m!.get(mem);
+      if (cur) cur.push(g.name);
+      else m!.set(mem, [g.name]);
+    });
+  });
+  svcReverseCache.set(cfg, m);
+  return m;
 }
 
 // ---------- literal IP / CIDR support ----------
@@ -117,6 +238,9 @@ export function findAddressesContainingIp(
   cfg: ParsedConfig
 ): string[] {
   if (!IPV4.test(ip)) return [];
+  const cache = idx(cfg).addrContainsIp;
+  const cached = cache.get(ip);
+  if (cached) return cached;
   const hits: string[] = [];
   cfg.addresses.forEach((a) => {
     const ok = a.entries.some((e) => {
@@ -127,6 +251,7 @@ export function findAddressesContainingIp(
     });
     if (ok) hits.push(a.name);
   });
+  cache.set(ip, hits);
   return hits;
 }
 
@@ -154,7 +279,7 @@ export function summarizeService(
   cfg: ParsedConfig
 ): string {
   if (!name || name === "any") return name || "—";
-  const svc = cfg.services.find((s) => s.name === name);
+  const svc = idx(cfg).svcByName.get(name);
   if (svc) {
     return svc.entries
       .map((e) =>
@@ -288,18 +413,29 @@ export interface Flow {
 export function serviceToPorts(
   name: string,
   cfg: ParsedConfig,
-  seen: Set<string> = new Set()
+  seen?: Set<string>
 ): string[] {
   if (!name || name === "any") return ["any"];
+  // Top-level memoized path. Recursive calls pass a `seen` set to break cycles
+  // and must skip the cache to avoid polluting it with partial results.
+  if (!seen) {
+    const cache = idx(cfg).service;
+    const hit = cache.get(name);
+    if (hit) return hit;
+    const result = serviceToPorts(name, cfg, new Set());
+    cache.set(name, result);
+    return result;
+  }
   if (seen.has(name)) return [];
   seen.add(name);
-  const svc = cfg.services.find((s) => s.name === name);
+  const i = idx(cfg);
+  const svc = i.svcByName.get(name);
   if (svc) {
     return svc.entries.map((e) =>
       e.destPort ? `${e.protocol}/${e.destPort}` : e.protocol
     );
   }
-  const grp = cfg.serviceGroups.find((g) => g.name === name);
+  const grp = i.svcGrpByName.get(name);
   if (grp) {
     const out = new Set<string>();
     grp.members.forEach((m) =>
@@ -457,13 +593,21 @@ function pickMatchingDnat(
 function collectAddressMembers(
   name: string,
   cfg: ParsedConfig,
-  seen: Set<string> = new Set()
+  seen?: Set<string>
 ): Set<string> {
+  if (!seen) {
+    const cache = idx(cfg).members;
+    const hit = cache.get(name);
+    if (hit) return hit;
+    const r = collectAddressMembers(name, cfg, new Set());
+    cache.set(name, r);
+    return r;
+  }
   const out = new Set<string>();
   if (seen.has(name)) return out;
   seen.add(name);
   out.add(name);
-  const grp = cfg.addressGroups.find((g) => g.name === name);
+  const grp = idx(cfg).grpByName.get(name);
   if (grp) {
     grp.members.forEach((m) => {
       collectAddressMembers(m, cfg, seen).forEach((x) => out.add(x));
@@ -480,16 +624,21 @@ type AddrEndpoint =
   | { kind: "domain"; value: string }
   | { kind: "mac"; value: string };
 
-/** Recursively expand a name into its literal endpoints.
- *  Names are only used as expansion paths — matching is done on literal
- *  values (IP / CIDR / range / domain / mac), never on shared name strings.
- *  Returns [] for unresolved names. */
 function addrEndpoints(
   name: string,
   cfg: ParsedConfig,
-  seen: Set<string> = new Set()
+  seen?: Set<string>
 ): AddrEndpoint[] {
-  if (!name || seen.has(name)) return [];
+  if (!name) return [];
+  if (!seen) {
+    const cache = idx(cfg).endpoints;
+    const hit = cache.get(name);
+    if (hit) return hit;
+    const r = addrEndpoints(name, cfg, new Set());
+    cache.set(name, r);
+    return r;
+  }
+  if (seen.has(name)) return [];
   seen.add(name);
 
   if (isIpLiteral(name)) {
@@ -498,12 +647,13 @@ function addrEndpoints(
       : [{ kind: "host", value: name }];
   }
 
-  const obj = cfg.addresses.find((a) => a.name === name);
+  const i = idx(cfg);
+  const obj = i.addrByName.get(name);
   if (obj) {
     return obj.entries.map((e) => ({ kind: e.kind, value: e.value })) as AddrEndpoint[];
   }
 
-  const pool = cfg.natPools.find((p) => p.name === name);
+  const pool = i.poolByName.get(name);
   if (pool && pool.addressFrom) {
     if (pool.addressTo && pool.addressTo !== pool.addressFrom) {
       return [{ kind: "range", value: `${pool.addressFrom}-${pool.addressTo}` }];
@@ -511,7 +661,7 @@ function addrEndpoints(
     return [{ kind: "host", value: pool.addressFrom }];
   }
 
-  const grp = cfg.addressGroups.find((g) => g.name === name);
+  const grp = i.grpByName.get(name);
   if (grp) {
     const out: AddrEndpoint[] = [];
     grp.members.forEach((m) =>
@@ -561,6 +711,27 @@ function rangesOverlap(x: [number, number], y: [number, number]): boolean {
  *  - Otherwise both sides are expanded to literal endpoints and must overlap
  *    on IP range / domain value / MAC value. No "shared name" shortcut —
  *    if both sides resolve to disjoint IPs, they DO NOT match. */
+const addrMatchCache = new WeakMap<ParsedConfig, Map<string, boolean>>();
+const rangeCache = new WeakMap<
+  ParsedConfig,
+  Map<string, [number, number][]>
+>();
+
+function endpointRangesFor(name: string, cfg: ParsedConfig): [number, number][] {
+  let m = rangeCache.get(cfg);
+  if (!m) {
+    m = new Map();
+    rangeCache.set(cfg, m);
+  }
+  const hit = m.get(name);
+  if (hit) return hit;
+  const r = addrEndpoints(name, cfg)
+    .map(endpointIpRange)
+    .filter((x): x is [number, number] => x !== null);
+  m.set(name, r);
+  return r;
+}
+
 export function addrMatches(
   a: string,
   b: string,
@@ -570,28 +741,46 @@ export function addrMatches(
   if (a === "any" || b === "any") return true;
   if (a === b) return true;
 
+  let cache = addrMatchCache.get(cfg);
+  if (!cache) {
+    cache = new Map();
+    addrMatchCache.set(cfg, cache);
+  }
+  const key = a < b ? `${a}\t${b}` : `${b}\t${a}`;
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+
   const A = addrEndpoints(a, cfg);
   const B = addrEndpoints(b, cfg);
-  if (A.length === 0 || B.length === 0) return false;
-
-  // domain / mac: exact value match
-  for (const ea of A) {
-    if (ea.kind !== "domain" && ea.kind !== "mac") continue;
-    for (const eb of B) {
-      if (eb.kind === ea.kind && eb.value === ea.value) return true;
+  let result = false;
+  if (A.length === 0 || B.length === 0) {
+    result = false;
+  } else {
+    // domain / mac: exact value match
+    outer: for (const ea of A) {
+      if (ea.kind !== "domain" && ea.kind !== "mac") continue;
+      for (const eb of B) {
+        if (eb.kind === ea.kind && eb.value === ea.value) {
+          result = true;
+          break outer;
+        }
+      }
+    }
+    if (!result) {
+      const aR = endpointRangesFor(a, cfg);
+      const bR = endpointRangesFor(b, cfg);
+      outer2: for (const x of aR) {
+        for (const y of bR) {
+          if (rangesOverlap(x, y)) {
+            result = true;
+            break outer2;
+          }
+        }
+      }
     }
   }
-
-  // IP-bearing endpoints: numeric range overlap (real containment)
-  const aR = A.map(endpointIpRange).filter(
-    (r): r is [number, number] => r !== null
-  );
-  const bR = B.map(endpointIpRange).filter(
-    (r): r is [number, number] => r !== null
-  );
-  for (const x of aR) for (const y of bR) if (rangesOverlap(x, y)) return true;
-
-  return false;
+  cache.set(key, result);
+  return result;
 }
 
 

@@ -13,7 +13,7 @@ import {
 import { ChevronDown, ArrowRight } from "lucide-react";
 import { L } from "@/components/previewAtoms";
 import {
-  buildNodeAggregates,
+  getNodeAggregates,
   CAT_LABEL,
   type IntermediaryCat,
   type NodeAggregate,
@@ -56,7 +56,7 @@ function IntermediariesPage() {
   const [activeCats, setActiveCats] = useState<Set<IntermediaryCat>>(new Set());
 
   const nodes = useMemo(
-    () => (cfg ? buildNodeAggregates(cfg) : []),
+    () => (cfg ? getNodeAggregates(cfg) : []),
     [cfg]
   );
 
