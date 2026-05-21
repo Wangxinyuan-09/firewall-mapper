@@ -108,22 +108,46 @@ export function expandAddressNames(
   name: string,
   cfg: ParsedConfig
 ): Set<string> {
+  if (name === "any") return new Set(["any"]);
+  const cache = idx(cfg).expandAddr;
+  const cached = cache.get(name);
+  if (cached) return cached;
+  // Build a reverse "member -> containing-group" index lazily once per cfg
+  // (stored inside expandAddr under a sentinel key) to avoid scanning all
+  // groups on every iteration.
   const out = new Set<string>([name]);
-  if (name === "any") return out;
+  const reverse = getReverseAddrGroupIndex(cfg);
   const stack = [name];
   const seen = new Set<string>();
   while (stack.length) {
     const cur = stack.pop()!;
-    cfg.addressGroups.forEach((g) => {
-      if (seen.has(g.name)) return;
-      if (g.members.includes(cur)) {
-        seen.add(g.name);
-        out.add(g.name);
-        stack.push(g.name);
-      }
+    const parents = reverse.get(cur);
+    if (!parents) continue;
+    parents.forEach((p) => {
+      if (seen.has(p)) return;
+      seen.add(p);
+      out.add(p);
+      stack.push(p);
     });
   }
+  cache.set(name, out);
   return out;
+}
+
+const addrReverseCache = new WeakMap<ParsedConfig, Map<string, string[]>>();
+function getReverseAddrGroupIndex(cfg: ParsedConfig): Map<string, string[]> {
+  let m = addrReverseCache.get(cfg);
+  if (m) return m;
+  m = new Map();
+  cfg.addressGroups.forEach((g) => {
+    g.members.forEach((mem) => {
+      const cur = m!.get(mem);
+      if (cur) cur.push(g.name);
+      else m!.set(mem, [g.name]);
+    });
+  });
+  addrReverseCache.set(cfg, m);
+  return m;
 }
 
 /** Expand a service name to itself + any service-group transitively containing it. */
@@ -131,22 +155,43 @@ export function expandServiceNames(
   name: string,
   cfg: ParsedConfig
 ): Set<string> {
+  if (name === "any") return new Set(["any"]);
+  const cache = idx(cfg).expandSvc;
+  const cached = cache.get(name);
+  if (cached) return cached;
   const out = new Set<string>([name]);
-  if (name === "any") return out;
+  const reverse = getReverseSvcGroupIndex(cfg);
   const stack = [name];
   const seen = new Set<string>();
   while (stack.length) {
     const cur = stack.pop()!;
-    cfg.serviceGroups.forEach((g) => {
-      if (seen.has(g.name)) return;
-      if (g.members.includes(cur)) {
-        seen.add(g.name);
-        out.add(g.name);
-        stack.push(g.name);
-      }
+    const parents = reverse.get(cur);
+    if (!parents) continue;
+    parents.forEach((p) => {
+      if (seen.has(p)) return;
+      seen.add(p);
+      out.add(p);
+      stack.push(p);
     });
   }
+  cache.set(name, out);
   return out;
+}
+
+const svcReverseCache = new WeakMap<ParsedConfig, Map<string, string[]>>();
+function getReverseSvcGroupIndex(cfg: ParsedConfig): Map<string, string[]> {
+  let m = svcReverseCache.get(cfg);
+  if (m) return m;
+  m = new Map();
+  cfg.serviceGroups.forEach((g) => {
+    g.members.forEach((mem) => {
+      const cur = m!.get(mem);
+      if (cur) cur.push(g.name);
+      else m!.set(mem, [g.name]);
+    });
+  });
+  svcReverseCache.set(cfg, m);
+  return m;
 }
 
 // ---------- literal IP / CIDR support ----------
