@@ -908,7 +908,9 @@ function DnatLabel({
       <ArrowRight className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
       <span className="min-w-0 truncate text-amber-700 dark:text-amber-300">
         {entry.rule.translatedPool}
-        {backendPort && backendPort !== entryPort && <span>:{backendPort}</span>}
+        {backendPort && backendPort !== entryPort && (
+          <span className="text-amber-700/60 dark:text-amber-300/60">:{backendPort}</span>
+        )}
       </span>
       {entry.rule.disabled && (
         <Badge tone="warn">disabled</Badge>
