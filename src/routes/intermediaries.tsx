@@ -56,7 +56,7 @@ function IntermediariesPage() {
   const [activeCats, setActiveCats] = useState<Set<IntermediaryCat>>(new Set());
 
   const nodes = useMemo(
-    () => (cfg ? buildNodeAggregates(cfg) : []),
+    () => (cfg ? getNodeAggregates(cfg) : []),
     [cfg]
   );
 
