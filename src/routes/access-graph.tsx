@@ -427,6 +427,7 @@ function SrcFocusView({ src, lines }: { src: string; lines: FocusLine[] }) {
               <FocusLineRow key={l.key} line={l} hideSrc={false} mutedDst />
             ))}
           </div>
+          <GroupNatChain rows={rows} />
         </FocusCard>
       ))}
     </div>
@@ -499,6 +500,7 @@ function DstFocusView({ dst, lines }: { dst: string; lines: FocusLine[] }) {
                   <FocusLineRow key={l.key} line={l} hideSrc mutedDst />
                 ))}
               </div>
+              <GroupNatChain rows={rows} />
             </div>
           ))}
         </div>
@@ -529,6 +531,7 @@ function SvcFocusView({ svc, lines }: { svc: string; lines: FocusLine[] }) {
               <FocusLineRow key={l.key} line={l} hideSrc={false} hideSvc mutedDst />
             ))}
           </div>
+          <GroupNatChain rows={rows} />
         </FocusCard>
       ))}
     </div>
@@ -824,6 +827,43 @@ function PolicyCountBadge({
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+// ---------- GroupNatChain: dedup NAT entries from rows, shown at group bottom ----------
+
+function GroupNatChain({ rows }: { rows: FocusLine[] }) {
+  const [showFull] = useShowFullPortRange();
+  const dedup = useMemo(() => {
+    const seen = new Set<string>();
+    const out: FlowDnatEntry[] = [];
+    for (const r of rows) {
+      for (const e of r.nat) {
+        const k = `${e.rule.id}@${e.rule.lineNo}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push(e);
+      }
+    }
+    return out;
+  }, [rows]);
+  if (dedup.length === 0) return null;
+  return (
+    <div className="mt-2 rounded-md border border-amber-500/25 bg-amber-500/5 p-2">
+      <div className="mb-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+        NAT 规则链 × {dedup.length}
+      </div>
+      <div className="space-y-1">
+        {dedup.map((d) => (
+          <DnatLabel
+            key={`${d.rule.id}@${d.rule.lineNo}`}
+            entry={d}
+            showFull={showFull}
+            block
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
