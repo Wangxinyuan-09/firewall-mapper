@@ -433,43 +433,63 @@ function FlowCard({ flow }: { flow: Flow }) {
         </div>
       </header>
 
-      {/* visual vertical tree */}
+      {/* visual horizontal flow */}
       <section className="overflow-x-auto border-b border-border bg-gradient-to-b from-secondary/20 to-transparent px-4 py-5">
-        <div className="mx-auto flex w-fit min-w-full flex-col items-center">
-          <NodeChip name={flow.src} role="src" />
-          <VLine />
-          {hasDnat && (
+        <div className="flex w-fit min-w-full items-stretch">
+          {/* src */}
+          <div className="flex items-center">
+            <NodeChip name={flow.src} role="src" />
+          </div>
+
+          {/* DNAT segment or direct */}
+          {hasDnat ? (
             <>
-              <Fanout count={flow.dnat.length}>
+              <Bracket count={flow.dnat.length} side="left" />
+              <div className="flex flex-col justify-center gap-2 py-1">
                 {flow.dnat.map((d) => (
-                  <DnatNode
-                    key={d.rule.id}
-                    entry={d}
-                    showFull={showFull}
-                    gap={gapSet}
-                  />
+                  <div key={d.rule.id} className="flex items-center">
+                    <div className="h-px w-2 bg-border" />
+                    <DnatNode
+                      entry={d}
+                      showFull={showFull}
+                      gap={gapSet}
+                    />
+                    <div className="h-px w-2 bg-border" />
+                  </div>
                 ))}
-              </Fanout>
-              <VLine />
+              </div>
+              <Bracket count={flow.dnat.length} side="right" />
             </>
+          ) : (
+            <div className="flex items-center">
+              <div className="h-px w-12 bg-border" />
+              <span className="px-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                直连
+              </span>
+              <div className="h-px w-12 bg-border" />
+            </div>
           )}
-          <NodeChip name={flow.dst} role="dst" cat={cat ?? undefined} />
+
+          {/* dst */}
+          <div className="flex items-center">
+            <NodeChip name={flow.dst} role="dst" cat={cat ?? undefined} />
+          </div>
+
+          {/* policy pill column */}
           {(permitPortPills.length > 0 ||
             denyPortPills.length > 0 ||
             hasAnyPermit ||
             flow.policies.length === 0) && (
             <>
-              <VLine />
-              <div className="flex max-w-xl flex-wrap items-center justify-center gap-1.5">
+              <div className="flex items-center">
+                <div className="h-px w-6 bg-border" />
+              </div>
+              <div className="flex flex-col items-start justify-center gap-1 py-1">
                 {flow.policies.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">
-                    无策略
-                  </span>
+                  <span className="text-xs text-muted-foreground">无策略</span>
                 ) : (
                   <>
-                    {hasAnyPermit && (
-                      <PortPill tone="permit">permit any</PortPill>
-                    )}
+                    {hasAnyPermit && <PortPill tone="permit">permit any</PortPill>}
                     {permitPortPills.map((p) => (
                       <PortPill key={"p" + p} tone="permit">
                         {p}
@@ -485,17 +505,17 @@ function FlowCard({ flow }: { flow: Flow }) {
               </div>
             </>
           )}
-          {flow.coverage.kind === "partial" && flow.coverage.gap.length > 0 && (
-            <div className="mt-3 max-w-xl text-center text-xs text-amber-700 dark:text-amber-400">
-              ⚠ 未被 permit 覆盖的暴露端口:
-              {flow.coverage.gap.map((g) => (
-                <code key={g} className="ml-1.5 rounded bg-amber-500/15 px-1 py-0.5">
-                  {g}
-                </code>
-              ))}
-            </div>
-          )}
         </div>
+        {flow.coverage.kind === "partial" && flow.coverage.gap.length > 0 && (
+          <div className="mt-3 text-xs text-amber-700 dark:text-amber-400">
+            ⚠ 未被 permit 覆盖的暴露端口:
+            {flow.coverage.gap.map((g) => (
+              <code key={g} className="ml-1.5 rounded bg-amber-500/15 px-1 py-0.5">
+                {g}
+              </code>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* details: groups / lists */}
