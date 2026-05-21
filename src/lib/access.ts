@@ -416,6 +416,153 @@ function flowMatchDst(f: Flow, value: string | undefined, cfg: ParsedConfig): bo
   return names.has(f.dst);
 }
 
+// ---------- focus lines: per (src,dst,proto,port,action) row ----------
+
+export interface FocusLine {
+  key: string;
+  src: string;
+  dst: string;
+  proto: string; // "tcp" | "udp" | "ip" | "any"
+  port: string; // "8443" | "any"
+  service: string; // "tcp/8443" or "any"
+  action: string; // "permit" | "deny" | "none" | ...
+  policies: PolicyRule[];
+  nat: FlowDnatEntry[];
+  coverageKind: CoverageKind;
+}
+
+function parsePortStr(p: string): { proto: string; port: string } {
+  if (!p || p === "any") return { proto: "any", port: "any" };
+  const idx = p.indexOf("/");
+  if (idx < 0) return { proto: p, port: "any" };
+  return { proto: p.slice(0, idx), port: p.slice(idx + 1) };
+}
+
+function pickMatchingDnat(
+  dnats: FlowDnatEntry[],
+  svc: string,
+  cfg: ParsedConfig
+): FlowDnatEntry[] {
+  if (dnats.length === 0) return [];
+  if (svc === "any") return dnats;
+  return dnats.filter((d) => {
+    const ports = d.backendPort ? serviceToPorts(d.backendPort, cfg) : ["any"];
+    return ports.includes("any") || ports.includes(svc);
+  });
+}
+
+export function buildFocusLines(
+  flows: Flow[],
+  cfg: ParsedConfig
+): FocusLine[] {
+  const out: FocusLine[] = [];
+  flows.forEach((f) => {
+    const groups = new Map<
+      string,
+      { proto: string; port: string; action: string; policies: PolicyRule[] }
+    >();
+    f.policies.forEach((seg) => {
+      seg.ports.forEach((p) => {
+        const { proto, port } = parsePortStr(p);
+        const k = `${proto}\t${port}\t${seg.policy.action}`;
+        let g = groups.get(k);
+        if (!g) {
+          g = { proto, port, action: seg.policy.action, policies: [] };
+          groups.set(k, g);
+        }
+        if (!g.policies.includes(seg.policy)) g.policies.push(seg.policy);
+      });
+    });
+    groups.forEach((g) => {
+      const svc = g.port === "any" ? "any" : `${g.proto}/${g.port}`;
+      out.push({
+        key: `${f.key}\t${svc}\t${g.action}`,
+        src: f.src,
+        dst: f.dst,
+        proto: g.proto,
+        port: g.port,
+        service: svc,
+        action: g.action,
+        policies: g.policies.sort(
+          (a, b) => Number(a.id) - Number(b.id) || a.lineNo - b.lineNo
+        ),
+        nat: pickMatchingDnat(f.dnat, svc, cfg),
+        coverageKind: f.coverage.kind,
+      });
+    });
+
+    // Orphan DNAT exposed ports → "none" action lines
+    if (f.dnat.length > 0) {
+      const exposedSet = new Set<string>();
+      f.dnat.forEach((d) => {
+        const ports = d.backendPort
+          ? serviceToPorts(d.backendPort, cfg)
+          : ["any"];
+        ports.forEach((p) => exposedSet.add(p));
+      });
+      const hasAnyPermit = f.permitPorts.has("any");
+      exposedSet.forEach((p) => {
+        if (p === "any") return;
+        if (hasAnyPermit || f.permitPorts.has(p) || f.denyPorts.has(p)) return;
+        const { proto, port } = parsePortStr(p);
+        out.push({
+          key: `${f.key}\t${p}\tnone`,
+          src: f.src,
+          dst: f.dst,
+          proto,
+          port,
+          service: p,
+          action: "none",
+          policies: [],
+          nat: pickMatchingDnat(f.dnat, p, cfg),
+          coverageKind: f.coverage.kind,
+        });
+      });
+    }
+  });
+  return out;
+}
+
+export type FocusType = "src" | "dst" | "svc";
+
+export interface FocusCandidate {
+  id: string; // object name OR "tcp/8443"
+  count: number; // number of lines hitting this candidate
+}
+
+export function focusCandidates(
+  lines: FocusLine[],
+  focus: FocusType
+): FocusCandidate[] {
+  const m = new Map<string, number>();
+  lines.forEach((l) => {
+    const key = focus === "src" ? l.src : focus === "dst" ? l.dst : l.service;
+    m.set(key, (m.get(key) ?? 0) + 1);
+  });
+  return [...m.entries()]
+    .map(([id, count]) => ({ id, count }))
+    .sort(
+      (a, b) =>
+        (a.id === "any" ? 1 : 0) - (b.id === "any" ? 1 : 0) ||
+        b.count - a.count ||
+        a.id.localeCompare(b.id)
+    );
+}
+
+export function filterLinesByFocus(
+  lines: FocusLine[],
+  focus: FocusType,
+  id: string
+): FocusLine[] {
+  if (!id) return [];
+  return lines.filter((l) => {
+    if (focus === "src") return l.src === id;
+    if (focus === "dst") return l.dst === id;
+    return l.service === id;
+  });
+}
+
+
 function flowMatchSvc(f: Flow, value: string | undefined, cfg: ParsedConfig): boolean {
   if (!value || value === "any") return true;
   if (f.allPorts.has("any")) return true;
