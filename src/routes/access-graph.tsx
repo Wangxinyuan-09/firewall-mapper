@@ -489,7 +489,7 @@ function DstFocusView({ dst, lines }: { dst: string; lines: FocusLine[] }) {
               </div>
               <div className="space-y-1.5">
                 {sortRows(rows).map((l) => (
-                  <FocusLineRow key={l.key} line={l} hideSrc />
+                  <FocusLineRow key={l.key} line={l} hideSrc mutedDst />
                 ))}
               </div>
             </div>
