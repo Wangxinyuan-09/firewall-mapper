@@ -711,6 +711,27 @@ function rangesOverlap(x: [number, number], y: [number, number]): boolean {
  *  - Otherwise both sides are expanded to literal endpoints and must overlap
  *    on IP range / domain value / MAC value. No "shared name" shortcut —
  *    if both sides resolve to disjoint IPs, they DO NOT match. */
+const addrMatchCache = new WeakMap<ParsedConfig, Map<string, boolean>>();
+const rangeCache = new WeakMap<
+  ParsedConfig,
+  Map<string, [number, number][]>
+>();
+
+function endpointRangesFor(name: string, cfg: ParsedConfig): [number, number][] {
+  let m = rangeCache.get(cfg);
+  if (!m) {
+    m = new Map();
+    rangeCache.set(cfg, m);
+  }
+  const hit = m.get(name);
+  if (hit) return hit;
+  const r = addrEndpoints(name, cfg)
+    .map(endpointIpRange)
+    .filter((x): x is [number, number] => x !== null);
+  m.set(name, r);
+  return r;
+}
+
 export function addrMatches(
   a: string,
   b: string,
@@ -720,28 +741,46 @@ export function addrMatches(
   if (a === "any" || b === "any") return true;
   if (a === b) return true;
 
+  let cache = addrMatchCache.get(cfg);
+  if (!cache) {
+    cache = new Map();
+    addrMatchCache.set(cfg, cache);
+  }
+  const key = a < b ? `${a}\t${b}` : `${b}\t${a}`;
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+
   const A = addrEndpoints(a, cfg);
   const B = addrEndpoints(b, cfg);
-  if (A.length === 0 || B.length === 0) return false;
-
-  // domain / mac: exact value match
-  for (const ea of A) {
-    if (ea.kind !== "domain" && ea.kind !== "mac") continue;
-    for (const eb of B) {
-      if (eb.kind === ea.kind && eb.value === ea.value) return true;
+  let result = false;
+  if (A.length === 0 || B.length === 0) {
+    result = false;
+  } else {
+    // domain / mac: exact value match
+    outer: for (const ea of A) {
+      if (ea.kind !== "domain" && ea.kind !== "mac") continue;
+      for (const eb of B) {
+        if (eb.kind === ea.kind && eb.value === ea.value) {
+          result = true;
+          break outer;
+        }
+      }
+    }
+    if (!result) {
+      const aR = endpointRangesFor(a, cfg);
+      const bR = endpointRangesFor(b, cfg);
+      outer2: for (const x of aR) {
+        for (const y of bR) {
+          if (rangesOverlap(x, y)) {
+            result = true;
+            break outer2;
+          }
+        }
+      }
     }
   }
-
-  // IP-bearing endpoints: numeric range overlap (real containment)
-  const aR = A.map(endpointIpRange).filter(
-    (r): r is [number, number] => r !== null
-  );
-  const bR = B.map(endpointIpRange).filter(
-    (r): r is [number, number] => r !== null
-  );
-  for (const x of aR) for (const y of bR) if (rangesOverlap(x, y)) return true;
-
-  return false;
+  cache.set(key, result);
+  return result;
 }
 
 
