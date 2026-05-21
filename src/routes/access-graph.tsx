@@ -627,37 +627,40 @@ function FocusLineRow({
   return (
     <div
       className={cn(
-        "grid items-center gap-x-2 gap-y-1 rounded-md border border-border border-l-4 bg-background/40 px-2 py-1.5 text-xs",
-        accent,
-        "grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)_minmax(0,auto)_minmax(0,auto)]"
+        "rounded-md border border-border border-l-4 bg-background/40 px-2 py-1.5 text-xs",
+        accent
       )}
     >
-      <div className="flex min-w-0 items-center">
-        {!hideSrc ? <NodePlain name={line.src} /> : <Placeholder />}
+      <div className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)_minmax(0,auto)] items-center gap-x-2">
+        <div className="flex min-w-0 items-center">
+          {!hideSrc ? <NodePlain name={line.src} /> : <Placeholder />}
+        </div>
+        <div className="flex min-w-0 items-center">
+          {hideDst ? (
+            <Placeholder />
+          ) : mutedDst ? (
+            <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70">
+              <ObjectName name={line.dst} />
+            </span>
+          ) : (
+            <NodePlain name={line.dst} />
+          )}
+        </div>
+        <div className="flex min-w-0 items-center pl-1">
+          {!hideSvc ? <SvcChip svc={line.service} /> : <Placeholder />}
+        </div>
+        <div className="flex items-center justify-end gap-1.5 pl-1">
+          <ActionBadge action={line.action} />
+          {line.policies.length > 0 && (
+            <PolicyCountBadge policies={line.policies} />
+          )}
+        </div>
       </div>
-      <div className="flex min-w-0 items-center gap-1.5">
-        <NatToken nat={line.nat} />
-      </div>
-      <div className="flex min-w-0 items-center">
-        {hideDst ? (
-          <Placeholder />
-        ) : mutedDst ? (
-          <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70">
-            <ObjectName name={line.dst} />
-          </span>
-        ) : (
-          <NodePlain name={line.dst} />
-        )}
-      </div>
-      <div className="flex min-w-0 items-center pl-1">
-        {!hideSvc ? <SvcChip svc={line.service} /> : <Placeholder />}
-      </div>
-      <div className="flex items-center justify-end gap-1.5 pl-1">
-        <ActionBadge action={line.action} />
-        {line.policies.length > 0 && (
-          <PolicyCountBadge policies={line.policies} />
-        )}
-      </div>
+      {hasNat && (
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 border-t border-border/50 pt-1">
+          <NatToken nat={line.nat} />
+        </div>
+      )}
     </div>
   );
 }
