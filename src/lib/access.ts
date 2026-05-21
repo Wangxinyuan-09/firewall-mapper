@@ -279,7 +279,7 @@ export function summarizeService(
   cfg: ParsedConfig
 ): string {
   if (!name || name === "any") return name || "—";
-  const svc = cfg.services.find((s) => s.name === name);
+  const svc = idx(cfg).svcByName.get(name);
   if (svc) {
     return svc.entries
       .map((e) =>
