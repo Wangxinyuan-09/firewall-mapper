@@ -427,6 +427,7 @@ function SrcFocusView({ src, lines }: { src: string; lines: FocusLine[] }) {
               <FocusLineRow key={l.key} line={l} hideSrc={false} mutedDst />
             ))}
           </div>
+          <GroupNatFooter rows={rows} />
         </FocusCard>
       ))}
     </div>
