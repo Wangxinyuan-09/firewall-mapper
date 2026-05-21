@@ -517,20 +517,14 @@ function SvcFocusView({ svc, lines }: { svc: string; lines: FocusLine[] }) {
       />
       {[...byDst.entries()].map(([dst, rows]) => (
         <FocusCard key={dst}>
-          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>目的</span>
             <NodeChip name={dst} role="dst" />
-            <span className="text-[10px]">{rows.length} 条</span>
+            <GroupSummary rows={rows} />
           </div>
           <div className="space-y-1.5">
             {sortRows(rows).map((l) => (
-              <FocusLineRow
-                key={l.key}
-                line={l}
-                hideSrc={false}
-                hideDst
-                hideSvc
-              />
+              <FocusLineRow key={l.key} line={l} hideSrc={false} hideSvc />
             ))}
           </div>
         </FocusCard>
