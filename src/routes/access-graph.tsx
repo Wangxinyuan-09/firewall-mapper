@@ -427,6 +427,7 @@ function SrcFocusView({ src, lines }: { src: string; lines: FocusLine[] }) {
               <FocusLineRow key={l.key} line={l} hideSrc={false} mutedDst />
             ))}
           </div>
+          <GroupNatFooter rows={rows} />
         </FocusCard>
       ))}
     </div>
@@ -499,6 +500,7 @@ function DstFocusView({ dst, lines }: { dst: string; lines: FocusLine[] }) {
                   <FocusLineRow key={l.key} line={l} hideSrc mutedDst />
                 ))}
               </div>
+              <GroupNatFooter rows={rows} />
             </div>
           ))}
         </div>
@@ -529,6 +531,7 @@ function SvcFocusView({ svc, lines }: { svc: string; lines: FocusLine[] }) {
               <FocusLineRow key={l.key} line={l} hideSrc={false} hideSvc mutedDst />
             ))}
           </div>
+          <GroupNatFooter rows={rows} />
         </FocusCard>
       ))}
     </div>
@@ -629,14 +632,11 @@ function FocusLineRow({
       className={cn(
         "grid items-center gap-x-2 gap-y-1 rounded-md border border-border border-l-4 bg-background/40 px-2 py-1.5 text-xs",
         accent,
-        "grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)_minmax(0,auto)_minmax(0,auto)]"
+        "grid-cols-[minmax(0,auto)_minmax(0,1fr)_minmax(0,auto)_minmax(0,auto)]"
       )}
     >
       <div className="flex min-w-0 items-center">
         {!hideSrc ? <NodePlain name={line.src} /> : <Placeholder />}
-      </div>
-      <div className="flex min-w-0 items-center gap-1.5">
-        <NatToken nat={line.nat} />
       </div>
       <div className="flex min-w-0 items-center">
         {hideDst ? (
@@ -658,6 +658,29 @@ function FocusLineRow({
           <PolicyCountBadge policies={line.policies} />
         )}
       </div>
+    </div>
+  );
+}
+
+function GroupNatFooter({ rows }: { rows: FocusLine[] }) {
+  const nat = useMemo(() => {
+    const seen = new Set<string>();
+    const out: FlowDnatEntry[] = [];
+    rows.forEach((r) =>
+      r.nat.forEach((d) => {
+        const key = `${d.rule.id}@${d.rule.lineNo}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(d);
+      })
+    );
+    return out;
+  }, [rows]);
+  if (nat.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
+      <span className="text-[10px] uppercase tracking-wide">NAT 规则链</span>
+      <NatToken nat={nat} />
     </div>
   );
 }
