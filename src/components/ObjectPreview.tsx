@@ -302,7 +302,7 @@ export function ObjectName({
 
   const trigger = (
     <span
-      className={`font-mono text-xs cursor-help underline decoration-dotted underline-offset-2 ${colorCls} ${className}`}
+      className={`font-mono text-xs cursor-help ${colorCls} ${className}`}
     >
       {name}
     </span>
