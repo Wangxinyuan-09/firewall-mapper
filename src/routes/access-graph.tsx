@@ -21,6 +21,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
@@ -43,6 +48,7 @@ import {
   type FocusCandidate,
   type FlowDnatEntry,
 } from "@/lib/access";
+import { ObjectName } from "@/components/ObjectPreview";
 import { cn } from "@/lib/utils";
 
 interface SearchParams {
