@@ -675,12 +675,33 @@ function NodeChip({
   role: "src" | "dst";
 }) {
   const cat = classifyIntermediary(name);
+  const cls =
+    role === "src"
+      ? "border-emerald-500/40 bg-emerald-500/10"
+      : "border-blue-500/40 bg-blue-500/10";
   return (
     <span
       className={cn(
-        "inline-flex min-w-0 items-center gap-1.5 rounded border border-border/60 px-1.5 py-0.5 font-mono text-xs text-foreground/90"
+        "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs",
+        cls
       )}
     >
+      <span className="min-w-0 truncate">
+        <ObjectName name={name} />
+      </span>
+      {cat && (
+        <span className="shrink-0 rounded bg-background/60 px-1 text-[10px] uppercase text-muted-foreground">
+          {CAT_LABEL[cat]}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function NodePlain({ name }: { name: string }) {
+  const cat = classifyIntermediary(name);
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5 font-mono text-xs text-foreground/90">
       <span className="min-w-0 truncate">
         <ObjectName name={name} />
       </span>
