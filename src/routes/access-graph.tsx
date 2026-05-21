@@ -142,8 +142,8 @@ function AccessGraphPage() {
     [allLines, focus]
   );
   const lines = useMemo(
-    () => filterLinesByFocus(allLines, focus, id),
-    [allLines, focus, id]
+    () => (cfg ? filterLinesByFocus(allLines, focus, id, cfg) : []),
+    [allLines, focus, id, cfg]
   );
 
   if (!cfg) return <EmptyConfig />;
