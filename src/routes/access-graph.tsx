@@ -500,6 +500,7 @@ function DstFocusView({ dst, lines }: { dst: string; lines: FocusLine[] }) {
                   <FocusLineRow key={l.key} line={l} hideSrc mutedDst />
                 ))}
               </div>
+              <GroupNatFooter rows={rows} />
             </div>
           ))}
         </div>
