@@ -634,10 +634,10 @@ function FocusLineRow({
           <Placeholder />
         ) : mutedDst ? (
           <span
-            className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/60"
+            className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70"
             title={line.dst}
           >
-            ↳ 同上
+            {line.dst}
           </span>
         ) : (
           <NodeChip name={line.dst} role="dst" />
@@ -675,22 +675,17 @@ function NodeChip({
   role: "src" | "dst";
 }) {
   const cat = classifyIntermediary(name);
-  const cls =
-    role === "src"
-      ? "border-emerald-500/40 bg-emerald-500/10"
-      : "border-blue-500/40 bg-blue-500/10";
   return (
     <span
       className={cn(
-        "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs",
-        cls
+        "inline-flex min-w-0 items-center gap-1.5 rounded border border-border/60 px-1.5 py-0.5 font-mono text-xs text-foreground/90"
       )}
     >
       <span className="min-w-0 truncate">
         <ObjectName name={name} />
       </span>
       {cat && (
-        <span className="shrink-0 rounded bg-background/60 px-1 text-[10px] uppercase text-muted-foreground">
+        <span className="shrink-0 rounded bg-muted/60 px-1 text-[10px] uppercase text-muted-foreground">
           {CAT_LABEL[cat]}
         </span>
       )}
