@@ -132,10 +132,10 @@ function AccessGraphPage() {
     });
   };
 
-  const allFlows = useMemo(() => (cfg ? buildFlows(cfg) : []), [cfg]);
+  const allFlows = useMemo(() => (cfg ? getFlows(cfg) : []), [cfg]);
   const allLines = useMemo(
-    () => (cfg ? buildFocusLines(allFlows, cfg) : []),
-    [allFlows, cfg]
+    () => (cfg ? getFocusLines(cfg) : []),
+    [cfg]
   );
   const candidates = useMemo(
     () => focusCandidates(allLines, focus),
