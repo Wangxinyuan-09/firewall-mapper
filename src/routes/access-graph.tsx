@@ -411,24 +411,57 @@ function SrcFocusView({ src, lines }: { src: string; lines: FocusLine[] }) {
       <FocusHeader anchor={{ name: src, role: "src" }} count={lines.length} />
       {[...byDst.entries()].map(([dst, rows]) => (
         <FocusCard key={dst}>
-          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>目的</span>
             <NodeChip name={dst} role="dst" />
-            <span className="text-[10px]">{rows.length} 条</span>
+            <GroupSummary rows={rows} />
           </div>
           <div className="space-y-1.5">
             {sortRows(rows).map((l) => (
-              <FocusLineRow
-                key={l.key}
-                line={l}
-                hideSrc={false}
-                hideDst
-              />
+              <FocusLineRow key={l.key} line={l} hideSrc={false} />
             ))}
           </div>
         </FocusCard>
       ))}
     </div>
+  );
+}
+
+function GroupSummary({ rows }: { rows: FocusLine[] }) {
+  const total = rows.length;
+  const natRows = rows.filter((r) => r.nat.length > 0).length;
+  const permitRows = rows.filter((r) => r.action === "permit").length;
+  const denyRows = rows.filter((r) => r.action === "deny").length;
+  const missingRows = rows.filter((r) => r.action === "none").length;
+  return (
+    <span className="ml-auto flex flex-wrap items-center gap-1.5 text-[10px]">
+      <span className="rounded bg-secondary/60 px-1.5 py-0.5">
+        {total} 条
+      </span>
+      {natRows > 0 && (
+        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:text-amber-300">
+          NAT {natRows}
+        </span>
+      )}
+      {permitRows > 0 && (
+        <span className="rounded border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300">
+          permit {permitRows}
+        </span>
+      )}
+      {denyRows > 0 && (
+        <span className="rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive">
+          deny {denyRows}
+        </span>
+      )}
+      {missingRows > 0 && (
+        <span
+          className="rounded border border-amber-500/60 bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-700 dark:text-amber-300"
+          title="DNAT 暴露但未找到匹配安全策略的行数"
+        >
+          策略缺失 {missingRows}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -456,12 +489,7 @@ function DstFocusView({ dst, lines }: { dst: string; lines: FocusLine[] }) {
               </div>
               <div className="space-y-1.5">
                 {sortRows(rows).map((l) => (
-                  <FocusLineRow
-                    key={l.key}
-                    line={l}
-                    hideSrc
-                    hideDst
-                  />
+                  <FocusLineRow key={l.key} line={l} hideSrc />
                 ))}
               </div>
             </div>
@@ -484,20 +512,14 @@ function SvcFocusView({ svc, lines }: { svc: string; lines: FocusLine[] }) {
       />
       {[...byDst.entries()].map(([dst, rows]) => (
         <FocusCard key={dst}>
-          <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>目的</span>
             <NodeChip name={dst} role="dst" />
-            <span className="text-[10px]">{rows.length} 条</span>
+            <GroupSummary rows={rows} />
           </div>
           <div className="space-y-1.5">
             {sortRows(rows).map((l) => (
-              <FocusLineRow
-                key={l.key}
-                line={l}
-                hideSrc={false}
-                hideDst
-                hideSvc
-              />
+              <FocusLineRow key={l.key} line={l} hideSrc={false} hideSvc />
             ))}
           </div>
         </FocusCard>
@@ -674,8 +696,11 @@ function ActionBadge({ action }: { action: string }) {
     );
   if (action === "none")
     return (
-      <span className="inline-flex items-center rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
-        无策略
+      <span
+        className="inline-flex items-center rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+        title="DNAT 已暴露此端口，但未找到匹配的安全策略（permit/deny 均无）。可能策略缺失，或解析器无法确认覆盖关系。"
+      >
+        未关联策略
       </span>
     );
   return (
@@ -821,15 +846,20 @@ function DnatLabel({
       <span className="px-0.5 text-amber-700 dark:text-amber-400">
         转换为
       </span>
-      {portChanged ? (
-        <>
-          <span className="text-amber-700 dark:text-amber-300">
-            :{backendPort}
-          </span>
-        </>
-      ) : backendPort ? (
-        <span className="text-muted-foreground">:{backendPort}</span>
-      ) : null}
+      <span className="text-amber-700 dark:text-amber-300">
+        {entry.rule.translatedPool}
+      </span>
+      {backendPort && (
+        <span
+          className={cn(
+            portChanged
+              ? "font-semibold text-amber-700 dark:text-amber-300"
+              : "text-muted-foreground"
+          )}
+        >
+          :{backendPort}
+        </span>
+      )}
       {entry.rule.iface && (
         <span className="text-[10px] text-muted-foreground">
           [{entry.rule.iface}]
