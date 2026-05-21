@@ -1,4 +1,13 @@
-import type { ParsedConfig, NatRule, PolicyRule } from "./parser/types";
+import type {
+  ParsedConfig,
+  NatRule,
+  PolicyRule,
+  AddressObject,
+  AddressGroup,
+  NatPool,
+  ServiceObject,
+  ServiceGroup,
+} from "./parser/types";
 
 export type IntermediaryCat = "waf" | "gateway" | "proxy" | "bastion" | "lb";
 
@@ -9,6 +18,73 @@ export const CAT_LABEL: Record<IntermediaryCat, string> = {
   bastion: "堡垒机",
   lb: "负载均衡",
 };
+
+// ---------- per-cfg index + memo caches ----------
+// All hot helpers below resolve names via Maps and memoize recursive results
+// keyed on the immutable ParsedConfig instance. This turns repeated O(N) array
+// .find() calls into O(1) Map lookups and avoids re-expanding the same name
+// across every policy × NAT × line iteration. Forward type references below
+// (AddrEndpoint / Flow / FocusLine / NodeAggregate) are declared later in the
+// same module; TS hoists interface/type declarations.
+
+interface AccessIndex {
+  addrByName: Map<string, AddressObject>;
+  grpByName: Map<string, AddressGroup>;
+  poolByName: Map<string, NatPool>;
+  svcByName: Map<string, ServiceObject>;
+  svcGrpByName: Map<string, ServiceGroup>;
+  endpoints: Map<string, AddrEndpoint[]>;
+  service: Map<string, string[]>;
+  members: Map<string, Set<string>>;
+  expandAddr: Map<string, Set<string>>;
+  expandSvc: Map<string, Set<string>>;
+  addrContainsIp: Map<string, string[]>;
+  flows?: Flow[];
+  focusLines?: FocusLine[];
+  nodeAggregates?: NodeAggregate[];
+}
+
+const indexCache = new WeakMap<ParsedConfig, AccessIndex>();
+
+function idx(cfg: ParsedConfig): AccessIndex {
+  let v = indexCache.get(cfg);
+  if (v) return v;
+  v = {
+    addrByName: new Map(cfg.addresses.map((a) => [a.name, a])),
+    grpByName: new Map(cfg.addressGroups.map((g) => [g.name, g])),
+    poolByName: new Map(cfg.natPools.map((p) => [p.name, p])),
+    svcByName: new Map(cfg.services.map((s) => [s.name, s])),
+    svcGrpByName: new Map(cfg.serviceGroups.map((g) => [g.name, g])),
+    endpoints: new Map(),
+    service: new Map(),
+    members: new Map(),
+    expandAddr: new Map(),
+    expandSvc: new Map(),
+    addrContainsIp: new Map(),
+  };
+  indexCache.set(cfg, v);
+  return v;
+}
+
+/** Cached top-level flow + focus-line builders so navigating away and back
+ *  does not re-run buildFlows / buildFocusLines from scratch. */
+export function getFlows(cfg: ParsedConfig): Flow[] {
+  const i = idx(cfg);
+  if (!i.flows) i.flows = buildFlows(cfg);
+  return i.flows;
+}
+
+export function getFocusLines(cfg: ParsedConfig): FocusLine[] {
+  const i = idx(cfg);
+  if (!i.focusLines) i.focusLines = buildFocusLines(getFlows(cfg), cfg);
+  return i.focusLines;
+}
+
+export function getNodeAggregates(cfg: ParsedConfig): NodeAggregate[] {
+  const i = idx(cfg);
+  if (!i.nodeAggregates) i.nodeAggregates = buildNodeAggregates(cfg);
+  return i.nodeAggregates;
+}
 
 export function classifyIntermediary(name: string): IntermediaryCat | undefined {
   const lower = name.toLowerCase();
