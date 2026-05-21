@@ -36,8 +36,8 @@ import {
   Layers,
 } from "lucide-react";
 import {
-  buildFlows,
-  buildFocusLines,
+  getFlows,
+  getFocusLines,
   classifyIntermediary,
   CAT_LABEL,
   focusCandidates,
