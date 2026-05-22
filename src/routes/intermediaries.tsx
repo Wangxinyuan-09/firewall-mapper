@@ -54,12 +54,12 @@ const CAT_ICON: Record<IntermediaryCat, React.ComponentType<{ className?: string
   lb: Scale,
 };
 
-const CAT_BG: Record<IntermediaryCat, string> = {
-  waf: "bg-rose-500/8 border-rose-500/25",
-  gateway: "bg-blue-500/8 border-blue-500/25",
-  bastion: "bg-purple-500/8 border-purple-500/25",
-  proxy: "bg-amber-500/8 border-amber-500/25",
-  lb: "bg-emerald-500/8 border-emerald-500/25",
+const CAT_BORDER_L: Record<IntermediaryCat, string> = {
+  waf: "border-l-rose-500",
+  gateway: "border-l-blue-500",
+  bastion: "border-l-purple-500",
+  proxy: "border-l-amber-500",
+  lb: "border-l-emerald-500",
 };
 
 const CAT_DOT: Record<IntermediaryCat, string> = {
@@ -326,9 +326,10 @@ function NodeCard({ node }: { node: NodeAggregate }) {
       open={open}
       onOpenChange={setOpen}
       className={cn(
-        "group rounded-xl border transition-shadow hover:shadow-sm",
-        CAT_BG[node.cat],
-        open && "shadow-sm",
+        "group rounded-xl border border-border bg-card transition-shadow hover:shadow-sm",
+        "border-l-[3px]",
+        CAT_BORDER_L[node.cat],
+        open && "shadow-md",
       )}
     >
       <CollapsibleTrigger asChild>
