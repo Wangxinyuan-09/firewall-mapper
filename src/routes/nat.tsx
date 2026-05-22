@@ -21,7 +21,7 @@ export const Route = createFileRoute("/nat")({
 });
 
 function NatPage() {
-  const { cfg } = useConfigStore();
+  const { cfg, xr } = useConfigStore();
 
   const dnatRules = useMemo(
     () =>
@@ -92,7 +92,7 @@ function NatPage() {
       key: "src",
       header: "源",
       cell: (r) => <ObjectName name={r.srcAddr} />,
-      search: (r) => r.srcAddr,
+      search: (r) => `${r.srcAddr} ${(xr?.addressToValues.get(r.srcAddr) ?? []).join(" ")}`,
     },
     {
       key: "orig",
@@ -105,7 +105,7 @@ function NatPage() {
           </div>
         </div>
       ),
-      search: (r) => `${r.origDstAddr} ${r.origDstService}`,
+      search: (r) => `${r.origDstAddr} ${(xr?.addressToValues.get(r.origDstAddr) ?? []).join(" ")} ${r.origDstService}`,
     },
     {
       key: "trans",
@@ -120,7 +120,7 @@ function NatPage() {
           )}
         </div>
       ),
-      search: (r) => `${r.translatedPool} ${r.servicePort ?? ""}`,
+      search: (r) => `${r.translatedPool} ${(xr?.addressToValues.get(r.translatedPool) ?? []).join(" ")} ${r.servicePort ?? ""}`,
     },
     descCol,
     lineCol,
@@ -134,13 +134,13 @@ function NatPage() {
       key: "src",
       header: "原始源",
       cell: (r) => <ObjectName name={r.srcAddr} />,
-      search: (r) => r.srcAddr,
+      search: (r) => `${r.srcAddr} ${(xr?.addressToValues.get(r.srcAddr) ?? []).join(" ")}`,
     },
     {
       key: "dst",
       header: "目的",
       cell: (r) => <ObjectName name={r.origDstAddr} />,
-      search: (r) => r.origDstAddr,
+      search: (r) => `${r.origDstAddr} ${(xr?.addressToValues.get(r.origDstAddr) ?? []).join(" ")}`,
     },
     {
       key: "trans",
@@ -158,7 +158,7 @@ function NatPage() {
         </div>
       ),
       search: (r) =>
-        `${r.translatedSrc ?? ""} ${r.egressInterface ? "interface" : ""}`,
+        `${r.translatedSrc ?? ""} ${(xr?.addressToValues.get(r.translatedSrc ?? "") ?? []).join(" ")} ${r.egressInterface ? "interface" : ""}`,
     },
     descCol,
     lineCol,
