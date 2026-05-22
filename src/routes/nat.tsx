@@ -22,16 +22,21 @@ export const Route = createFileRoute("/nat")({
 
 function NatPage() {
   const { cfg } = useConfigStore();
-  if (!cfg) return <EmptyConfig />;
 
   const dnatRules = useMemo(
-    () => cfg.natRules.filter((r) => r.kind === "destination" || r.kind === "static"),
+    () =>
+      cfg?.natRules.filter(
+        (r) => r.kind === "destination" || r.kind === "static"
+      ) ?? [],
     [cfg]
   );
   const snatRules = useMemo(
-    () => cfg.natRules.filter((r) => r.kind === "source"),
+    () => cfg?.natRules.filter((r) => r.kind === "source") ?? [],
     [cfg]
   );
+
+  if (!cfg) return <EmptyConfig />;
+
 
   const statusCol: Column<NatRule> = {
     key: "status",
