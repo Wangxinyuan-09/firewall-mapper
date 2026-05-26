@@ -175,6 +175,7 @@ function NatPage() {
       search: (r) =>
         `${r.translatedSrc ?? ""} ${r.egressInterface ? "interface" : ""}`,
     },
+    logCol,
     descCol,
     lineCol,
   ];
