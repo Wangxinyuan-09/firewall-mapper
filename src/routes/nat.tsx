@@ -42,12 +42,17 @@ function NatPage() {
     key: "status",
     header: "状态",
     cell: (r) => (
-      <div className="flex gap-1">
-        {r.disabled && <Badge tone="muted">已禁用</Badge>}
+      <div className="flex flex-wrap gap-1">
+        {r.disabled ? (
+          <Badge tone="muted">已禁用</Badge>
+        ) : (
+          <Badge tone="ok">已启用</Badge>
+        )}
         {r.log && <Badge tone="default">log</Badge>}
       </div>
     ),
-    search: (r) => `${r.disabled ? "disabled" : ""} ${r.log ? "log" : ""}`,
+    search: (r) =>
+      `${r.disabled ? "disabled 已禁用" : "enabled 已启用"} ${r.log ? "log" : ""}`,
   };
 
   const idCol: Column<NatRule> = {

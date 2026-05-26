@@ -350,9 +350,7 @@ function NodeCard({ node }: { node: NodeAggregate }) {
           <div className="min-w-0 flex-1 space-y-1.5">
             <div className="flex flex-wrap items-baseline gap-2">
               <span className="truncate text-sm font-semibold">{node.name}</span>
-              <Badge tone="muted" className="text-[10px]">
-                {CAT_LABEL[node.cat]}
-              </Badge>
+              <Badge tone="muted">{CAT_LABEL[node.cat]}</Badge>
             </div>
 
             {node.address && (
@@ -526,7 +524,7 @@ function PolicyMiniList({
           key={`${p.id}@${p.lineNo}`}
           className="flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 font-mono"
         >
-          <Badge tone={p.action === "permit" ? "ok" : "danger"} className="text-[10px]">
+          <Badge tone={p.action === "permit" ? "ok" : "danger"}>
             #{p.id} {p.action === "permit" ? "放行" : "拒绝"}
           </Badge>
           <span className="text-muted-foreground">
