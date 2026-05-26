@@ -41,18 +41,27 @@ function NatPage() {
   const statusCol: Column<NatRule> = {
     key: "status",
     header: "状态",
-    cell: (r) => (
-      <div className="flex flex-wrap gap-1">
-        {r.disabled ? (
-          <Badge tone="muted">已禁用</Badge>
-        ) : (
-          <Badge tone="ok">已启用</Badge>
-        )}
-        {r.log && <Badge tone="default">log</Badge>}
-      </div>
-    ),
-    search: (r) =>
-      `${r.disabled ? "disabled 已禁用" : "enabled 已启用"} ${r.log ? "log" : ""}`,
+    cell: (r) =>
+      r.disabled ? (
+        <Badge tone="muted">已禁用</Badge>
+      ) : (
+        <Badge tone="ok">已启用</Badge>
+      ),
+    search: (r) => (r.disabled ? "disabled 已禁用" : "enabled 已启用"),
+    className: "w-20",
+  };
+
+  const logCol: Column<NatRule> = {
+    key: "log",
+    header: "日志",
+    cell: (r) =>
+      r.log ? (
+        <Badge tone="default">log</Badge>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      ),
+    search: (r) => (r.log ? "log 日志" : ""),
+    className: "w-16",
   };
 
   const idCol: Column<NatRule> = {
@@ -127,6 +136,7 @@ function NatPage() {
       ),
       search: (r) => `${r.translatedPool} ${r.servicePort ?? ""}`,
     },
+    logCol,
     descCol,
     lineCol,
   ];
@@ -165,6 +175,7 @@ function NatPage() {
       search: (r) =>
         `${r.translatedSrc ?? ""} ${r.egressInterface ? "interface" : ""}`,
     },
+    logCol,
     descCol,
     lineCol,
   ];
