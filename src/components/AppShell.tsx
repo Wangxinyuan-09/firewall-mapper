@@ -9,7 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { useShowLineNumbers, useShowFullPortRange } from "@/lib/uiPrefs";
+import { useShowLineNumbers, useShowFullPortRange, useShowPolicyZone } from "@/lib/uiPrefs";
 
 const nav = [
   { to: "/", label: "概览" },
@@ -26,6 +26,7 @@ const nav = [
 function DisplaySettings() {
   const [showLineNo, setShowLineNo] = useShowLineNumbers();
   const [showFullPort, setShowFullPort] = useShowFullPortRange();
+  const [showPolicyZone, setShowPolicyZone] = useShowPolicyZone();
   const activeCount = (showLineNo ? 1 : 0) + (showFullPort ? 1 : 0);
 
   return (
@@ -74,6 +75,19 @@ function DisplaySettings() {
             <Switch
               checked={showFullPort}
               onCheckedChange={setShowFullPort}
+              className="mt-0.5"
+            />
+          </label>
+          <label className="flex cursor-pointer select-none items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm">显示策略 Zone</div>
+              <div className="text-xs text-muted-foreground">
+                多数环境为 any→any，默认隐藏
+              </div>
+            </div>
+            <Switch
+              checked={showPolicyZone}
+              onCheckedChange={setShowPolicyZone}
               className="mt-0.5"
             />
           </label>

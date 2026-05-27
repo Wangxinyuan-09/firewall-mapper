@@ -3,6 +3,7 @@ import { useConfigStore } from "@/lib/store";
 import { EmptyConfig } from "@/components/EmptyConfig";
 import { Badge, DataTable, LineLink, type Column } from "@/components/DataTable";
 import { ObjectName } from "@/components/ObjectPreview";
+import { useShowPolicyZone } from "@/lib/uiPrefs";
 
 export const Route = createFileRoute("/policies")({
   head: () => ({
@@ -19,6 +20,7 @@ export const Route = createFileRoute("/policies")({
 
 function PoliciesPage() {
   const { cfg } = useConfigStore();
+  const [showZone] = useShowPolicyZone();
   if (!cfg) return <EmptyConfig />;
 
   const cols: Column<(typeof cfg.policies)[number]>[] = [
@@ -58,16 +60,21 @@ function PoliciesPage() {
       cell: (p) => <ObjectName name={p.service} />,
       search: (p) => p.service,
     },
-    {
-      key: "zone",
-      header: "Zone",
-      cell: (p) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {p.srcZone} → {p.dstZone}
-        </span>
-      ),
-      search: (p) => `${p.srcZone} ${p.dstZone}`,
-    },
+    ...(showZone
+      ? [
+          {
+            key: "zone",
+            header: "Zone",
+            cell: (p: (typeof cfg.policies)[number]) => (
+              <span className="font-mono text-xs text-muted-foreground">
+                {p.srcZone} → {p.dstZone}
+              </span>
+            ),
+            search: (p: (typeof cfg.policies)[number]) =>
+              `${p.srcZone} ${p.dstZone}`,
+          } satisfies Column<(typeof cfg.policies)[number]>,
+        ]
+      : []),
     {
       key: "schedule",
       header: "期限",
