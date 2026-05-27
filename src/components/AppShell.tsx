@@ -26,6 +26,7 @@ const nav = [
 function DisplaySettings() {
   const [showLineNo, setShowLineNo] = useShowLineNumbers();
   const [showFullPort, setShowFullPort] = useShowFullPortRange();
+  const [showPolicyZone, setShowPolicyZone] = useShowPolicyZone();
   const activeCount = (showLineNo ? 1 : 0) + (showFullPort ? 1 : 0);
 
   return (
