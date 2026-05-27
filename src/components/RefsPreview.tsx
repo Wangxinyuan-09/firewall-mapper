@@ -9,6 +9,7 @@ import { useConfigStore } from "@/lib/store";
 import type { RefUsage } from "@/lib/parser";
 import { L, DescQuote } from "@/components/previewAtoms";
 import type { NatRule, PolicyRule } from "@/lib/parser/types";
+import { useShowPolicyZone } from "@/lib/uiPrefs";
 
 const byLabel: Record<RefUsage["by"], string> = {
   policy: "策略",
