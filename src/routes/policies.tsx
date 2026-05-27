@@ -60,16 +60,21 @@ function PoliciesPage() {
       cell: (p) => <ObjectName name={p.service} />,
       search: (p) => p.service,
     },
-    {
-      key: "zone",
-      header: "Zone",
-      cell: (p) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {p.srcZone} → {p.dstZone}
-        </span>
-      ),
-      search: (p) => `${p.srcZone} ${p.dstZone}`,
-    },
+    ...(showZone
+      ? [
+          {
+            key: "zone",
+            header: "Zone",
+            cell: (p: (typeof cfg.policies)[number]) => (
+              <span className="font-mono text-xs text-muted-foreground">
+                {p.srcZone} → {p.dstZone}
+              </span>
+            ),
+            search: (p: (typeof cfg.policies)[number]) =>
+              `${p.srcZone} ${p.dstZone}`,
+          } satisfies Column<(typeof cfg.policies)[number]>,
+        ]
+      : []),
     {
       key: "schedule",
       header: "期限",
