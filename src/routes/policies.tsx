@@ -20,6 +20,7 @@ export const Route = createFileRoute("/policies")({
 
 function PoliciesPage() {
   const { cfg } = useConfigStore();
+  const [showZone] = useShowPolicyZone();
   if (!cfg) return <EmptyConfig />;
 
   const cols: Column<(typeof cfg.policies)[number]>[] = [
