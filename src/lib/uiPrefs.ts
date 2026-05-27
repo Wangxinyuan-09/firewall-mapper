@@ -77,3 +77,7 @@ export const useShowLineNumbers = () => useBoolPref("cfg.showLineNo");
 export const setShowFullPortRange = (v: boolean) =>
   setPref("cfg.showFullPortRange", v);
 export const useShowFullPortRange = () => useBoolPref("cfg.showFullPortRange");
+
+export const setShowPolicyZone = (v: boolean) =>
+  setPref("cfg.showPolicyZone", v);
+export const useShowPolicyZone = () => useBoolPref("cfg.showPolicyZone");
