@@ -776,6 +776,7 @@ function PolicyCountBadge({
   policies: FocusLine["policies"];
 }) {
   const [showLineNo] = useShowLineNumbers();
+  const [showZonePref] = useShowPolicyZone();
   return (
     <Popover>
       <PopoverTrigger asChild>
