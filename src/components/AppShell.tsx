@@ -78,6 +78,19 @@ function DisplaySettings() {
               className="mt-0.5"
             />
           </label>
+          <label className="flex cursor-pointer select-none items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm">显示策略 Zone</div>
+              <div className="text-xs text-muted-foreground">
+                多数环境为 any→any，默认隐藏
+              </div>
+            </div>
+            <Switch
+              checked={showPolicyZone}
+              onCheckedChange={setShowPolicyZone}
+              className="mt-0.5"
+            />
+          </label>
         </div>
       </PopoverContent>
     </Popover>
