@@ -7,7 +7,11 @@ import { useConfigStore } from "@/lib/store";
 import type { CrossRef } from "@/lib/parser";
 import { EmptyConfig } from "@/components/EmptyConfig";
 import { Badge, LineLink } from "@/components/DataTable";
-import { useShowFullPortRange, useShowLineNumbers } from "@/lib/uiPrefs";
+import {
+  useShowFullPortRange,
+  useShowLineNumbers,
+  useShowPolicyZone,
+} from "@/lib/uiPrefs";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Command,
@@ -782,6 +786,7 @@ function PolicyCountBadge({
   policies: FocusLine["policies"];
 }) {
   const [showLineNo] = useShowLineNumbers();
+  const [showZonePref] = useShowPolicyZone();
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -816,9 +821,15 @@ function PolicyCountBadge({
                 {p.action}
               </Badge>
               <span className="text-muted-foreground">#{p.id}</span>
-              <span className="text-[10px] text-muted-foreground">
-                {p.srcZone}→{p.dstZone}
-              </span>
+              {showZonePref &&
+                !(
+                  (!p.srcZone || p.srcZone === "any") &&
+                  (!p.dstZone || p.dstZone === "any")
+                ) && (
+                  <span className="text-[10px] text-muted-foreground">
+                    {p.srcZone || "any"}→{p.dstZone || "any"}
+                  </span>
+                )}
               <span>{p.srcAddr}</span>
               <ArrowRight className="h-3 w-3 text-muted-foreground" />
               <span>{p.dstAddr}</span>
