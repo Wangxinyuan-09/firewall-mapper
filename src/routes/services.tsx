@@ -6,6 +6,7 @@ import { ObjectName } from "@/components/ObjectPreview";
 import { RefsPreview } from "@/components/RefsPreview";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useShowFullPortRange } from "@/lib/uiPrefs";
+import { serviceToPorts } from "@/lib/access";
 
 export const Route = createFileRoute("/services")({
   head: () => ({
@@ -95,7 +96,10 @@ function ServicesPage() {
           ))}
         </div>
       ),
-      search: (g) => g.members.join(" "),
+      search: (g) =>
+        `${g.members.join(" ")} ${g.members
+          .flatMap((m) => serviceToPorts(m, cfg))
+          .join(" ")}`,
     },
     {
       key: "desc",

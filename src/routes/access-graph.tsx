@@ -4,6 +4,7 @@ import {
   useSearch,
 } from "@tanstack/react-router";
 import { useConfigStore } from "@/lib/store";
+import type { CrossRef } from "@/lib/parser";
 import { EmptyConfig } from "@/components/EmptyConfig";
 import { Badge, LineLink } from "@/components/DataTable";
 import {
@@ -101,7 +102,7 @@ const FOCUS_PLACEHOLDER: Record<FocusType, string> = {
 };
 
 function AccessGraphPage() {
-  const { cfg } = useConfigStore();
+  const { cfg, xr } = useConfigStore();
   const search = useSearch({ from: "/access-graph" });
   const navigate = useNavigate({ from: "/access-graph" });
 
@@ -169,6 +170,7 @@ function AccessGraphPage() {
             value={id}
             options={candidates}
             onChange={setId}
+            xr={xr}
           />
           {id && (
             <span className="text-xs text-muted-foreground">
@@ -233,18 +235,26 @@ function FocusPicker({
   value,
   options,
   onChange,
+  xr,
 }: {
   focus: FocusType;
   value: string;
   options: FocusCandidate[];
   onChange: (v: string) => void;
+  xr?: CrossRef | null;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-
-  const filtered = options.filter((o) =>
-    o.id.toLowerCase().includes(query.toLowerCase())
-  );
+  const filtered = options.filter((o) => {
+    const q = query.toLowerCase();
+    if (o.id.toLowerCase().includes(q)) return true;
+    // if query is IP literal, also match candidates whose object names contain this IP (via xr.ipToNames)
+    if ((isIpLiteral(query) || /^[a-z]+\//i.test(query)) && xr) {
+      const names = xr.ipToNames.get(query) ?? [];
+      if (names.includes(o.id)) return true;
+    }
+    return false;
+  });
   const showLiteral =
     query.length > 0 &&
     !options.some((o) => o.id === query) &&

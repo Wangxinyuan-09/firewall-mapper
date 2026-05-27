@@ -3,6 +3,7 @@ import { useConfigStore } from "@/lib/store";
 import { EmptyConfig } from "@/components/EmptyConfig";
 import { Badge, DataTable, LineLink, type Column } from "@/components/DataTable";
 import { ObjectName } from "@/components/ObjectPreview";
+import { serviceToPorts } from "@/lib/access";
 import { useShowPolicyZone } from "@/lib/uiPrefs";
 
 export const Route = createFileRoute("/policies")({
@@ -19,7 +20,7 @@ export const Route = createFileRoute("/policies")({
 });
 
 function PoliciesPage() {
-  const { cfg } = useConfigStore();
+  const { cfg, xr } = useConfigStore();
   const [showZone] = useShowPolicyZone();
   if (!cfg) return <EmptyConfig />;
 
@@ -46,19 +47,22 @@ function PoliciesPage() {
       key: "src",
       header: "源",
       cell: (p) => <ObjectName name={p.srcAddr} />,
-      search: (p) => p.srcAddr,
+      search: (p) =>
+        `${p.srcAddr} ${(xr?.addressToValues.get(p.srcAddr) ?? []).join(" ")}`,
     },
     {
       key: "dst",
       header: "目的",
       cell: (p) => <ObjectName name={p.dstAddr} />,
-      search: (p) => p.dstAddr,
+      search: (p) =>
+        `${p.dstAddr} ${(xr?.addressToValues.get(p.dstAddr) ?? []).join(" ")}`,
     },
     {
       key: "svc",
       header: "服务",
       cell: (p) => <ObjectName name={p.service} />,
-      search: (p) => p.service,
+      search: (p) =>
+        `${p.service} ${serviceToPorts(p.service, cfg).join(" ")}`,
     },
     ...(showZone
       ? [

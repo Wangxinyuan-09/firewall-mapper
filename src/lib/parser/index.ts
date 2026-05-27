@@ -441,6 +441,10 @@ export interface CrossRef {
   // name(addr/addr-group/service/service-group) -> 引用方说明
   addressUsedBy: Map<string, RefUsage[]>;
   serviceUsedBy: Map<string, RefUsage[]>;
+  // address name -> 展开的地址值（例如 host/net/range）
+  addressToValues: Map<string, string[]>;
+  // ip 字面量 -> 包含该 ip 的对象/组名列表
+  ipToNames: Map<string, string[]>;
 }
 
 export interface RefUsage {
@@ -453,6 +457,8 @@ export interface RefUsage {
 export function buildCrossRef(cfg: ParsedConfig): CrossRef {
   const addressUsedBy = new Map<string, RefUsage[]>();
   const serviceUsedBy = new Map<string, RefUsage[]>();
+  const addressToValues = new Map<string, string[]>();
+  const ipToNames = new Map<string, string[]>();
   const add = (
     map: Map<string, RefUsage[]>,
     key: string,
@@ -518,7 +524,65 @@ export function buildCrossRef(cfg: ParsedConfig): CrossRef {
     });
   });
 
-  return { addressUsedBy, serviceUsedBy };
+  // build addressToValues: address -> its entries; address-group -> flatten members' entries
+  const addrMap = new Map<string, string[]>();
+  cfg.addresses.forEach((a) => {
+    const vals = a.entries.map((e) => e.value);
+    addrMap.set(a.name, vals);
+    addressToValues.set(a.name, vals);
+    // record ip->name for host entries
+    a.entries
+      .filter((e) => e.value && e.value.match(/^\d+\.\d+\.\d+\.\d+$/))
+      .forEach((e) => {
+        const arr = ipToNames.get(e.value) ?? [];
+        arr.push(a.name);
+        ipToNames.set(e.value, arr);
+      });
+  });
+
+  // helper to resolve group members recursively (avoid cycles)
+  const resolveGroup = (g: typeof cfg.addressGroups[number], seen = new Set<string>()): string[] => {
+    if (seen.has(g.name)) return [];
+    seen.add(g.name);
+    const out: string[] = [];
+    g.members.forEach((m) => {
+      if (addrMap.has(m)) out.push(...(addrMap.get(m) ?? []));
+      else {
+        const sub = cfg.addressGroups.find((gg) => gg.name === m);
+        if (sub) out.push(...resolveGroup(sub, seen));
+      }
+    });
+    return out;
+  };
+
+  cfg.addressGroups.forEach((g) => {
+    const vals = resolveGroup(g);
+    addressToValues.set(g.name, vals);
+    vals.forEach((v) => {
+      if (v.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+        const arr = ipToNames.get(v) ?? [];
+        arr.push(g.name);
+        ipToNames.set(v, arr);
+      }
+    });
+  });
+
+  // NAT pools may contain literal addresses
+  cfg.natPools.forEach((p) => {
+    const vals: string[] = [];
+    if (p.addressFrom) vals.push(p.addressFrom);
+    if (p.addressTo && p.addressTo !== p.addressFrom) vals.push(p.addressTo);
+    if (vals.length > 0) addressToValues.set(p.name, vals);
+    vals.forEach((v) => {
+      if (v.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+        const arr = ipToNames.get(v) ?? [];
+        arr.push(p.name);
+        ipToNames.set(v, arr);
+      }
+    });
+  });
+
+  return { addressUsedBy, serviceUsedBy, addressToValues, ipToNames };
 }
 
 // ---------- 审计 ----------

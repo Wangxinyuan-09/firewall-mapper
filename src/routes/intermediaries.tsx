@@ -29,6 +29,7 @@ import {
   CAT_LABEL,
   type IntermediaryCat,
   type NodeAggregate,
+  isIpLiteral,
 } from "@/lib/access";
 import { useShowFullPortRange } from "@/lib/uiPrefs";
 
@@ -121,17 +122,23 @@ const CAT_LABEL_COLOR: Record<IntermediaryCat, string> = {
 const CAT_ORDER: IntermediaryCat[] = ["waf", "gateway", "bastion", "proxy", "lb"];
 
 function IntermediariesPage() {
-  const { cfg } = useConfigStore();
+  const { cfg, xr } = useConfigStore();
   const [q, setQ] = useState("");
   const [activeCat, setActiveCat] = useState<IntermediaryCat | null>(null);
 
   const nodes = useMemo(() => (cfg ? getNodeAggregates(cfg) : []), [cfg]);
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const needleRaw = q.trim();
+    const needle = needleRaw.toLowerCase();
     return nodes.filter((n) => {
       if (activeCat && n.cat !== activeCat) return false;
       if (!needle) return true;
+      // IP literal: consult xr.ipToNames for object/group names that contain this IP
+      if (isIpLiteral(needleRaw) && xr) {
+        const names = xr.ipToNames.get(needleRaw) ?? [];
+        if (names.includes(n.name)) return true;
+      }
       return (
         n.name.toLowerCase().includes(needle) ||
         (n.address ?? "").toLowerCase().includes(needle)
