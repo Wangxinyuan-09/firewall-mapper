@@ -1,84 +1,35 @@
-# 新增 SNAT（`ip nat source`）识别与适配
+## 目标
 
-## 1. 解析器：识别 `ip nat source`
+在 `对象列表` 的"被引用"列（`RefsPreview` 悬浮卡）里，除了显示直接引用该地址/服务的策略、NAT、地址组、服务组之外，还要把这些**组**再被哪些策略/NAT 引用一并展开，做"传递引用"汇总，方便一次性看到对象的真实使用面。
 
-文件：`src/lib/parser/index.ts`
+## 当前行为
 
-观察样本，SNAT 单行语法稳定为：
+`addressUsedBy / serviceUsedBy` 只记录**一层**引用：
+- 地址 A → 用到 A 的策略、NAT、地址组
+- 地址组 G → 用到 G 的策略、NAT
 
-```
-ip nat source <iface> <srcAddr> <origDstAddr> <translatedSrc> {interface | <poolAddr>} [log] <id>
-```
+所以预览 A 时只看到"地址组 G 引用了我"，但看不到"G 又被策略 #12 / NAT #7 引用"。
 
-- `<srcAddr>`：原始源（被转换的对象/组/IP）
-- `<origDstAddr>`：匹配的目的（命中此规则的访问目的）
-- `<translatedSrc>`：转换后的源（地址对象 / 池 / 端口对象，由对象名或字面量给出）
-- 第 5 段为关键字 `interface`（出接口取址）或字面量地址（例：`172.23.51.138`）
-- 可选 `log`
-- 最后一个 token 为数字 ID
+## 方案
 
-续行同 DNAT，沿用现有 `ip nat <id> description|disable|unit-id ...` 块。
+在 `src/components/RefsPreview.tsx` 内计算传递引用（不改 parser，避免影响其它依赖 xref 形状的代码）：
 
-实现：在 `ip nat destination` 分支之后增加 `ip nat source` 分支，复用末尾 `id / log` 剥离逻辑，剩余段位映射到下列新字段。
+1. 对当前对象的直接引用列表 `refs` 中，每个 `by: "address-group"` 或 `by: "service-group"` 的条目，再去 `xr.addressUsedBy / xr.serviceUsedBy` 查询该组自身的引用。
+2. 收集其中 `by` 为 `policy` 或 `nat` 的条目作为"间接引用"，并记录是通过哪个组进来的（来源组名）。
+3. 与直接 policy/nat 引用做去重（按 `by + id`）：
+   - 若一条 policy 既被直接引用又通过组引用，保留为直接引用，不重复出现在间接区。
+4. 在悬浮卡里新增一个分组区块 **"通过组的间接引用"**，按 `policy / nat` 排序展示，每行后面用一个小标签注明 `via 组名`（多组命中时合并显示 `via G1, G2`）。
+5. 顶部 summary（`策略 N · NAT N · ...`）只统计直接引用数量；间接引用单独显示一行小计：`间接：策略 X · NAT Y`，避免数字含义混淆。
+6. 复用现有的 `PolicyLine / NatLine` 渲染与 any-any 折叠/排序逻辑（间接段也按相同权重排序，并支持展开 any-any）。
 
-## 2. 数据模型扩展
+## 不改动
 
-文件：`src/lib/parser/types.ts`
+- `src/lib/parser/index.ts`（`RefUsage` 结构、`addressUsedBy/serviceUsedBy` 语义不变）。
+- 其它依赖 xref 的页面（审计、对象列表的"被引用"计数等）。
+- 服务对象走同一逻辑（通过 `service-group` 间接到 policy/nat）。
 
-`NatRule` 扩展（向后兼容，DNAT 字段保留）：
+## 验收
 
-- `kind: "destination" | "source"`（保留 `"static"` 字面量备用）
-- 新增 SNAT 专用字段：
-  - `translatedSrc?: string`（转换后的源对象 / 池 / 字面量）
-  - `egressInterface?: boolean`（`true` 表示走出接口取址，对应关键字 `interface`）
-- DNAT 现有字段（`origDstAddr`/`origDstService`/`translatedPool`/`servicePort`）SNAT 不使用。
-
-字段统一含义：
-
-| 字段 | DNAT | SNAT |
-|---|---|---|
-| `srcAddr` | 匹配源 | 被转换的原始源 |
-| `origDstAddr` | 被转换的原始目的 | 匹配目的 |
-| `translatedPool` | 转换后的目的池 | —（用 `translatedSrc`） |
-| `translatedSrc` | — | 转换后的源 |
-| `egressInterface` | — | 出接口取址 |
-
-## 3. NAT 页面：拆为两 Tab
-
-文件：`src/routes/nat.tsx`
-
-将现有「NAT 规则 / NAT 池」改为三 Tab：
-
-1. **目的 NAT**（`cfg.natRules.filter(r => r.kind === "destination")`）— 复用现有列定义
-2. **源 NAT**（`cfg.natRules.filter(r => r.kind === "source")`）— 新列定义：
-   - #ID / 状态 / 接口
-   - 源（`srcAddr`，被转换对象）
-   - 目的（`origDstAddr`）
-   - 转换为源（`translatedSrc`；若 `egressInterface` 则显示 Badge「出接口」）
-   - 描述 / 行号
-3. **NAT 池**（保持现状，共用列表）
-
-Tab 标题带计数：`目的 NAT (N)`、`源 NAT (M)`、`NAT 池 (K)`。
-
-## 4. 交叉引用 & 访问图适配
-
-- **交叉引用**（`src/lib/parser/index.ts` 中 `buildCrossRef`）：把 SNAT 的 `srcAddr` / `origDstAddr` / `translatedSrc` 都登记为 `by: "nat"` 的地址引用，使 RefsPreview 能展示 SNAT 引用。
-- **访问图 / Flow 构建**（`src/lib/access.ts`）：
-  - DNAT 流向逻辑保持不变（外部→`translatedPool`）。
-  - SNAT 新增：源 = `srcAddr`（展开后内部 IP 集），目的 = `origDstAddr`，并把「源被转换为 `translatedSrc` / 出接口」作为流的元数据，便于「源不一致」的诊断面板呈现。
-  - `addrEndpoints` 已支持对象/池/组扩展，`translatedSrc` 若是池名或对象名可直接复用。
-- **中间节点识别**（`intermediaries`）：若 SNAT 的 `translatedSrc` 与已识别的 WAF/网关/代理地址重叠，记一条 evidence「SNAT 出口经 <node>」。
-
-## 5. 校验与回归
-
-- 用用户提供的样本（含 `interface` 与字面量池两种形态、含 `log`、含 `disable`、含中文对象名）覆盖解析；
-- 确认现有 DNAT 数量与字段不变；
-- 验证 NAT Tab 切换、行号跳转、CSV 导出在两个 Tab 都正常；
-- 验证「目的 `api-172.23.51.28` 匹配 `API网关-172.23.51.28`」等先前已修的语义不回归。
-
-## 受影响文件
-
-- `src/lib/parser/types.ts`
-- `src/lib/parser/index.ts`
-- `src/routes/nat.tsx`
-- `src/lib/access.ts`（SNAT 流语义）
+- 打开 `对象` 页面，悬浮一个被某地址组包含的地址：能看到原有直接引用区，外加新的"通过组的间接引用"区，行尾标注 `via <组名>`。
+- 仅被组引用、组又未被任何策略/NAT 引用的对象：不显示间接区。
+- 同一策略既直接又间接命中：只在直接区出现一次。

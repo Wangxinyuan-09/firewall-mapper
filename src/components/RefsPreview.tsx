@@ -197,6 +197,18 @@ interface Section {
   anyAnyCount: number;
 }
 
+interface IndirectItem {
+  by: "policy" | "nat";
+  id: string;
+  viaGroups: string[];
+}
+
+interface IndirectSection {
+  by: "policy" | "nat";
+  items: IndirectItem[];
+  anyAnyCount: number;
+}
+
 export function RefsPreview({
   name,
   kind,
@@ -258,18 +270,94 @@ export function RefsPreview({
       });
   }, [cfg, refs]);
 
+  const indirectSections = useMemo<IndirectSection[]>(() => {
+    if (!cfg || !xr) return [];
+    const groupKey: RefUsage["by"] =
+      kind === "service" ? "service-group" : "address-group";
+    const usedByMap =
+      kind === "service" ? xr.serviceUsedBy : xr.addressUsedBy;
+    const directKeys = new Set(
+      refs
+        .filter((r) => r.by === "policy" || r.by === "nat")
+        .map((r) => `${r.by}#${r.id}`),
+    );
+    // groupName -> (by#id -> viaGroups accumulator)
+    const acc = new Map<string, IndirectItem>();
+    const groupNames = refs.filter((r) => r.by === groupKey).map((r) => r.id);
+    for (const gname of groupNames) {
+      const usages = usedByMap.get(gname) ?? [];
+      for (const u of usages) {
+        if (u.by !== "policy" && u.by !== "nat") continue;
+        const key = `${u.by}#${u.id}`;
+        if (directKeys.has(key)) continue;
+        const existing = acc.get(key);
+        if (existing) {
+          if (!existing.viaGroups.includes(gname))
+            existing.viaGroups.push(gname);
+        } else {
+          acc.set(key, { by: u.by, id: u.id, viaGroups: [gname] });
+        }
+      }
+    }
+    const all = [...acc.values()];
+    const out: IndirectSection[] = [];
+    for (const by of ["policy", "nat"] as const) {
+      const items = all.filter((i) => i.by === by);
+      if (items.length === 0) continue;
+      let anyAnyCount = 0;
+      if (by === "policy") {
+        const map = new Map(cfg.policies.map((p) => [p.id, p]));
+        items.sort((a, b) => {
+          const wa = map.get(a.id) ? policyWeight(map.get(a.id)!) : 0;
+          const wb = map.get(b.id) ? policyWeight(map.get(b.id)!) : 0;
+          if (wa !== wb) return wa - wb;
+          return cmpId(a.id, b.id);
+        });
+        anyAnyCount = items.filter(
+          (i) => map.get(i.id) && policyWeight(map.get(i.id)!) === 100,
+        ).length;
+      } else {
+        const map = new Map(cfg.natRules.map((n) => [n.id, n]));
+        items.sort((a, b) => {
+          const wa = map.get(a.id) ? natWeight(map.get(a.id)!) : 0;
+          const wb = map.get(b.id) ? natWeight(map.get(b.id)!) : 0;
+          if (wa !== wb) return wa - wb;
+          return cmpId(a.id, b.id);
+        });
+        anyAnyCount = items.filter(
+          (i) => map.get(i.id) && natWeight(map.get(i.id)!) === 100,
+        ).length;
+      }
+      out.push({ by, items, anyAnyCount });
+    }
+    return out;
+  }, [cfg, xr, refs, kind]);
+
   if (!xr) return null;
   if (refs.length === 0) return <Badge tone="warn">未引用</Badge>;
 
   const summary = sections
     .map((s) => `${byLabel[s.by]} ${s.items.length}`)
     .join(" · ");
+  const indirectSummary = indirectSections
+    .map((s) => `${byLabel[s.by]} ${s.items.length}`)
+    .join(" · ");
+  const indirectTotal = indirectSections.reduce(
+    (n, s) => n + s.items.length,
+    0,
+  );
 
   return (
     <HoverCard openDelay={120} closeDelay={80}>
       <HoverCardTrigger asChild>
         <span className="text-xs cursor-help underline decoration-dotted underline-offset-2 text-primary">
           {refs.length} 处 · {summary}
+          {indirectTotal > 0 && (
+            <span className="text-muted-foreground">
+              {" "}
+              · 间接 {indirectTotal}
+            </span>
+          )}
         </span>
       </HoverCardTrigger>
       <HoverCardContent
@@ -280,15 +368,111 @@ export function RefsPreview({
           <div className="text-sm">
             <span className="font-semibold">{name}</span>
             <span className="ml-2 text-xs font-normal text-muted-foreground">
-              共 {refs.length} 处引用 · {summary}
+              共 {refs.length} 处直接引用 · {summary}
+              {indirectTotal > 0 && ` · 间接 ${indirectTotal}（${indirectSummary}）`}
             </span>
           </div>
           {sections.map((s) => (
             <SectionBlock key={s.by} section={s} hit={name} cfg={cfg!} />
           ))}
+          {indirectSections.length > 0 && (
+            <div className="space-y-2 pt-1 border-t border-border/40">
+              <div className="text-xs font-medium text-muted-foreground">
+                通过组的间接引用
+              </div>
+              {indirectSections.map((s) => (
+                <IndirectSectionBlock
+                  key={s.by}
+                  section={s}
+                  hit={name}
+                  cfg={cfg!}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </HoverCardContent>
     </HoverCard>
+  );
+}
+
+function ViaBadge({ groups }: { groups: string[] }) {
+  return (
+    <span className="text-[10px] text-muted-foreground font-mono">
+      via {groups.join(", ")}
+    </span>
+  );
+}
+
+function IndirectSectionBlock({
+  section,
+  hit,
+  cfg,
+}: {
+  section: IndirectSection;
+  hit: string;
+  cfg: NonNullable<ReturnType<typeof useConfigStore>["cfg"]>;
+}) {
+  const [showAny, setShowAny] = useState(false);
+  const { by, items, anyAnyCount } = section;
+  const visibleItems = showAny
+    ? items
+    : items.filter((_, i) => i < items.length - anyAnyCount);
+  const max = 30;
+  const shown = visibleItems.slice(0, max);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <span>
+          {byLabel[by]}（{items.length}）
+        </span>
+        {anyAnyCount > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAny((v) => !v)}
+            className="text-primary hover:text-primary/80 hover:underline"
+          >
+            {showAny ? "收起" : "展开"} {anyAnyCount} 条 any-any 引用
+          </button>
+        )}
+      </div>
+      {shown.length > 0 && (
+        <ul className="divide-y divide-border/40 rounded-md border border-border/40">
+          {shown.map((r, i) => (
+            <li key={i} className="py-1.5 px-2 space-y-0.5">
+              {by === "policy" && (() => {
+                const p = cfg.policies.find((x) => x.id === r.id);
+                return p ? (
+                  <PolicyLine p={p} hit={hit} />
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    策略 #{r.id}
+                  </span>
+                );
+              })()}
+              {by === "nat" && (() => {
+                const n = cfg.natRules.find((x) => x.id === r.id);
+                return n ? (
+                  <NatLine n={n} hit={hit} />
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    NAT #{r.id}
+                  </span>
+                );
+              })()}
+              <div className="pl-0.5">
+                <ViaBadge groups={r.viaGroups} />
+              </div>
+            </li>
+          ))}
+          {visibleItems.length > shown.length && (
+            <li className="text-xs text-muted-foreground py-1.5 px-2">
+              …还有 {visibleItems.length - shown.length} 处
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
   );
 }
 
