@@ -6,7 +6,11 @@ import {
 import { useConfigStore } from "@/lib/store";
 import { EmptyConfig } from "@/components/EmptyConfig";
 import { Badge, LineLink } from "@/components/DataTable";
-import { useShowFullPortRange, useShowLineNumbers } from "@/lib/uiPrefs";
+import {
+  useShowFullPortRange,
+  useShowLineNumbers,
+  useShowPolicyZone,
+} from "@/lib/uiPrefs";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Command,
