@@ -13,6 +13,7 @@ import { useShowLineNumbers, useShowFullPortRange, useShowPolicyZone } from "@/l
 
 const nav = [
   { to: "/", label: "概览" },
+  { to: "/search", label: "全局搜索" },
   { to: "/objects", label: "地址对象" },
   { to: "/services", label: "服务对象" },
   { to: "/policies", label: "策略" },

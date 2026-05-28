@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ServicesRouteImport } from './routes/services'
+import { Route as SearchRouteImport } from './routes/search'
 import { Route as RawRouteImport } from './routes/raw'
 import { Route as PoliciesRouteImport } from './routes/policies'
 import { Route as ObjectsRouteImport } from './routes/objects'
@@ -22,6 +23,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const ServicesRoute = ServicesRouteImport.update({
   id: '/services',
   path: '/services',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SearchRoute = SearchRouteImport.update({
+  id: '/search',
+  path: '/search',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RawRoute = RawRouteImport.update({
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/objects': typeof ObjectsRoute
   '/policies': typeof PoliciesRoute
   '/raw': typeof RawRoute
+  '/search': typeof SearchRoute
   '/services': typeof ServicesRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/objects': typeof ObjectsRoute
   '/policies': typeof PoliciesRoute
   '/raw': typeof RawRoute
+  '/search': typeof SearchRoute
   '/services': typeof ServicesRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/objects': typeof ObjectsRoute
   '/policies': typeof PoliciesRoute
   '/raw': typeof RawRoute
+  '/search': typeof SearchRoute
   '/services': typeof ServicesRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/objects'
     | '/policies'
     | '/raw'
+    | '/search'
     | '/services'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/objects'
     | '/policies'
     | '/raw'
+    | '/search'
     | '/services'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/objects'
     | '/policies'
     | '/raw'
+    | '/search'
     | '/services'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   ObjectsRoute: typeof ObjectsRoute
   PoliciesRoute: typeof PoliciesRoute
   RawRoute: typeof RawRoute
+  SearchRoute: typeof SearchRoute
   ServicesRoute: typeof ServicesRoute
 }
 
@@ -154,6 +167,13 @@ declare module '@tanstack/react-router' {
       path: '/services'
       fullPath: '/services'
       preLoaderRoute: typeof ServicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/search': {
+      id: '/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof SearchRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/raw': {
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   ObjectsRoute: ObjectsRoute,
   PoliciesRoute: PoliciesRoute,
   RawRoute: RawRoute,
+  SearchRoute: SearchRoute,
   ServicesRoute: ServicesRoute,
 }
 export const routeTree = rootRouteImport

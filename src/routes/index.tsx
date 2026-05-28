@@ -391,6 +391,7 @@ function IndexPage() {
                 className="max-w-lg"
               />
               {globalResults.query ? (
+                <>
                 <div className="grid gap-3 xl:grid-cols-4">
                   <div className="rounded-lg border border-border bg-card p-4">
                     <div className="text-sm font-medium">NAT 规则</div>
@@ -453,6 +454,16 @@ function IndexPage() {
                     </div>
                   </div>
                 </div>
+                <div className="flex justify-end">
+                  <Link
+                    to="/search"
+                    search={globalResults.query ? { q: globalResults.query } : undefined}
+                    className="text-sm text-primary hover:underline"
+                  >
+                    查看全部结果 →
+                  </Link>
+                </div>
+                </>
               ) : (
                 <p className="text-sm text-muted-foreground">
                   在此处输入 IP、服务名或端口号，可快速定位对应的 NAT / 一体化 / 服务组 / 服务对象。
